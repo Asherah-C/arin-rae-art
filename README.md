@@ -3,6 +3,7 @@
 ## This package includes:
 - main.py
 - transforms.py
+- validations.py
 
 ## This package requires:
 - Python 3+
