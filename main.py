@@ -5,12 +5,15 @@ import sys
 import argparse
 from transforms import path_to_df, exclude_columns, sales_transform, inv_transform, event_transform, create_current_inv, append_to_inv,create_current_from_inv
 from validations import test_inv, test_sales, eval_sales_current, eval_new_hist_file
+from calculations import prod_table_ref, prod_ledger_ref, current_inv_ref, calc_production_df, update_current_from_prod
 
 default_inv = "Inventory - FACT - Inventory Snapshots.csv"
 default_sales = "Inventory - FACT - Historical Sales.csv"
 transformed_inv_file = "FACT - Inventory History.csv"
 transformed_sales = "FACT - Event Sales.csv"
 current_inventory_file = "DIM - Current Inventory.csv"
+prod_table = "Inventory - DIM - Production Table.csv"
+prod_ledger = "Inventory - FACT - Production Ledger.csv"
 
 def process_sales (path: str):
     sales = path_to_df(path)
@@ -93,6 +96,25 @@ def sales_processing(args):
     else:
         print("Supplied Sales Data is up-to-date. No action required.")
 
+def production_processing(args):
+    print("Processing Production Data...")
+    ledger_path = args.production
+    bill_of_mats_path = args.prod_table
+    current_inv_path= args.current_inv
+    inv_hist_path = args.inv_history
+
+    # Run Validation Checks of Fail out
+    inv_df = pd.read_csv(inv_hist_path)
+    bom_table = prod_table_ref(bill_of_mats_path)
+    ledger = prod_ledger_ref(ledger_path)
+    current_inv, date = current_inv_ref(current_inv_path)
+    production_table = calc_production_df(bom_table,ledger,date)
+    new_current_inv = update_current_from_prod(production_table,current_inv)
+    write_current_inv(new_current_inv)
+    append_current_inv(inv_df,new_current_inv)
+    
+
+
 def main():
     parser = argparse.ArgumentParser(
         description = "Transform sales and inventory CSVs into pivoted BI format."
@@ -118,6 +140,33 @@ def main():
         metavar = "FILE",
         help = "Path to inventory CSV file",
     )
+    group.add_argument(
+        "-pro",
+        "--production",
+        nargs = "?",
+        const = prod_ledger,
+        default = None,
+        metavar = "FILE",
+        help = "Path to production ledger CSV file",
+    )
+    parser.add_argument(
+        "--prod_table",
+        default = prod_table,
+        metavar = "FILE",
+        help = "Path to production/ Bill of materials table CSV file"
+    )
+    parser.add_argument(
+        "--current_inv",
+        default = current_inventory_file,
+        metavar = "FILE",
+        help = "Path to current inventory table CSV file"
+    )
+    parser.add_argument(
+        "--inv_history",
+        default = transformed_inv_file,
+        metavar = "FILE",
+        help = "Path to inventory history table CSV file"
+    )
 
     args = parser.parse_args()
 
@@ -133,6 +182,9 @@ def main():
     if args.inventory:
         inv_history = pd.read_csv(transformed_inv_file)
         inventory_processing(args, inv_history)
+
+    if args.production:
+        production_processing(args)
 
 if __name__ == "__main__":
     main()

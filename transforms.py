@@ -97,7 +97,7 @@ def create_current_inv(sales_df: pd.DataFrame,inv_df: pd.DataFrame) ->pd.DataFra
     merged_inv["Qty in Stock"] = merged_inv["Qty in Stock"] - merged_inv["Qty Sold"]
     merged_inv = merged_inv.drop(columns=["Qty Sold"])
 
-    merged_inv["Date of Inventory"] = pd.Timestamp.now().strftime("%m/%d/%Y")
+    merged_inv["Date of Inventory"] = sales_df_temp["Date_dt"].max().strftime("%m/%d/%Y")
     merged_inv["Inventory Location"] = "Calculated"
 
     return merged_inv[[
