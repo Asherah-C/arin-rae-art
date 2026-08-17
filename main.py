@@ -3,17 +3,20 @@ import pandas as pd
 import duckdb
 import sys
 import argparse
-from transforms import path_to_df, exclude_columns, sales_transform, inv_transform, event_transform, create_current_inv, append_to_inv,create_current_from_inv
+from transforms import path_to_df, exclude_columns, sales_transform, inv_transform, event_transform, create_current_inv, append_to_inv,create_current_from_inv,append_to_purch_ledger
 from validations import test_inv, test_sales, eval_sales_current, eval_new_hist_file
-from calculations import prod_table_ref, prod_ledger_ref, current_inv_ref, calc_production_df, update_current_from_prod
+from calculations import prod_table_ref, prod_ref, current_inv_ref, calc_production_df, update_current_from_prod, calc_current_from_purch, purch_table_ref, pull_purch_ledger
 
 default_inv = "Inventory - FACT - Inventory Snapshots.csv"
 default_sales = "Inventory - FACT - Historical Sales.csv"
+prod_table = "Inventory - DIM - Production Table.csv"
+prod_ledger_source = "Inventory - FACT - Production Ledger.csv"
+purch_ledger = "Inventory - FACT - Puchases.csv"
 transformed_inv_file = "FACT - Inventory History.csv"
 transformed_sales = "FACT - Event Sales.csv"
 current_inventory_file = "DIM - Current Inventory.csv"
-prod_table = "Inventory - DIM - Production Table.csv"
-prod_ledger = "Inventory - FACT - Production Ledger.csv"
+purchases_ledger_file = "FACT - Purchases Ledger.csv"
+prod_ledger = "FACT - Production Ledger.csv"
 
 def process_sales (path: str):
     sales = path_to_df(path)
@@ -57,6 +60,23 @@ def append_current_inv(inventory: pd.DataFrame,current_inv: pd.DataFrame):
     inv_filename = transformed_inv_file
     updated_inv.to_csv(inv_filename, index= False)
     print(f"Current inventory appended to: {inv_filename}. {len(current_inv)} rows added.")
+
+def append_purch_ledger(ledger: pd.DataFrame,purch_to_process: pd.DataFrame):
+    updated_ledger = append_to_purch_ledger(purch_to_process,ledger)
+    purch_filename = purchases_ledger_file
+    updated_ledger.to_csv(purch_filename, index= False)
+    print(f"New data appended to: { purch_filename}. {len(updated_ledger)} rows added.")
+
+def append_to_prod_ledger(prod_ledger: str, prod_to_process: pd.DataFrame) -> pd.DataFrame:
+    file_exists = os.path.exists(prod_ledger)
+
+    prod_to_process.to_csv(
+        prod_ledger,
+        mode="a",
+        header= not file_exists,
+        index=False
+    )
+    print(f"{prod_ledger} appended. {len(prod_to_process)} rows added.")
 
 def inventory_processing(args, inv_history):
     print("Processing inventory data...")
@@ -102,18 +122,45 @@ def production_processing(args):
     bill_of_mats_path = args.prod_table
     current_inv_path= args.current_inv
     inv_hist_path = args.inv_history
+    prod_ledger_path = args.prod_ledger_processed
 
     # Run Validation Checks of Fail out
+
     inv_df = pd.read_csv(inv_hist_path)
     bom_table = prod_table_ref(bill_of_mats_path)
-    ledger = prod_ledger_ref(ledger_path)
+    ledger = prod_ref(ledger_path)
     current_inv, date = current_inv_ref(current_inv_path)
     production_table = calc_production_df(bom_table,ledger,date)
+
+    append_to_prod_ledger(prod_ledger_path,production_table)
     new_current_inv = update_current_from_prod(production_table,current_inv)
+
     write_current_inv(new_current_inv)
     append_current_inv(inv_df,new_current_inv)
     
 
+def purchases_processing(args):
+    print("Processing Purchases Data...")
+    current_inv_path = args.current_inv
+    ledger_path = args.purch_ledger
+    inv_hist_path = args.inv_history
+    purchase_path = args.purchases
+
+    # Run Validation Checks
+
+    purch_ledger, ledger_date = pull_purch_ledger(ledger_path)
+    purch_to_process = purch_table_ref(purchase_path,ledger_date)
+    append_purch_ledger(purch_ledger,purch_to_process)
+
+
+    print(f"Updating {current_inv_path} and {inv_hist_path} with new purchases data.")
+    curr_inv, curr_date = current_inv_ref(current_inv_path)
+    new_curr_inv = calc_current_from_purch(purch_to_process,curr_inv,curr_date)
+
+    inventory_df = pd.read_csv(inv_hist_path)
+
+    write_current_inv(new_curr_inv)
+    append_current_inv(inventory_df,new_curr_inv)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -144,11 +191,20 @@ def main():
         "-pro",
         "--production",
         nargs = "?",
-        const = prod_ledger,
+        const = prod_ledger_source,
         default = None,
         metavar = "FILE",
-        help = "Path to production ledger CSV file",
+        help = "Path to source production ledger CSV file",
     )
+    group.add_argument(
+            "-pur",
+            "--purchases",
+            nargs = "?",
+            const = purch_ledger,
+            default = None,
+            metavar = "FILE",
+            help = "Path to raw purchases ledger CSV file",
+        )
     parser.add_argument(
         "--prod_table",
         default = prod_table,
@@ -167,7 +223,18 @@ def main():
         metavar = "FILE",
         help = "Path to inventory history table CSV file"
     )
-
+    parser.add_argument(
+        "--purch_ledger",
+        default = purchases_ledger_file,
+        metavar = "FILE",
+        help = "Path to most recently prepared purchases ledger table CSV file"
+    )
+    parser.add_argument(
+        "--prod_ledger_processed",
+        default = prod_ledger,
+        metavar = "FILE",
+        help = "Path to finished production ledger CSV file"
+    )
     args = parser.parse_args()
 
     if not os.path.exists(transformed_inv_file):
@@ -185,6 +252,9 @@ def main():
 
     if args.production:
         production_processing(args)
+
+    if args.purchases:
+        purchases_processing(args)
 
 if __name__ == "__main__":
     main()

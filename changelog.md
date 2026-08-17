@@ -11,3 +11,13 @@
 
 ### Bug Fixes
 * Fixed a bug that set the current inventory to the date the inventory ran. Now sets current inventory date to the latest data.
+
+# Release v0.4.0 Purchasing
+### ✨ New Features
+* **Purchases Integration** Accepts raw purchases csv for ETL into current inventory and inventory ledger while presnting a cleaner set of data for BI.
+* **Running Production Log** Saves and production log as `FACT - Production Ledger.csv`
+
+### Known Bugs & Issues
+* **Only one task performed per date.** Purchase, Productioon, Sales, or Inventory
+* **Purchases Functionality requires an empty ledger file to exist.**
+* **Append functions are memory intensive as file grows in size. will need to alter code later**

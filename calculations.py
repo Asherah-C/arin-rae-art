@@ -1,5 +1,6 @@
 import pandas as pd
 import duckdb
+import sys
 
 
 def prod_table_ref(path:str) -> pd.DataFrame:
@@ -15,12 +16,21 @@ def prod_table_ref(path:str) -> pd.DataFrame:
 
     return bill_of_mats_df
 
-def prod_ledger_ref(path:str) -> pd.DataFrame:
-    prod_ledger_df = pd.read_csv(path)
+def prod_ref(path:str) -> pd.DataFrame:
+    prod_df = pd.read_csv(path)
 
-    return prod_ledger_df
+    return prod_df
 
-def current_inv_ref (path:str) -> Tuple[pd.DataFrame,pd.Timestamp]:
+def purch_ledger_ref(path:str)-> tuple[pd.DataFrame,pd.Timestamp]:
+    purch_ledger = pd.read_csv(path)
+    if purch_ledger["Date of Purchase"].notna().any():
+        last_purch_date = pd.to_datetime(purch_ledger["Date of Purchase"]).max()
+    else:
+        last_purch_date = pd.Timestamp.min
+
+    return purch_ledger,last_purch_date
+
+def current_inv_ref (path:str) -> tuple[pd.DataFrame,pd.Timestamp]:
     current_inv_df = pd.read_csv(path)
     if current_inv_df["Date of Inventory"].notna().any():
         current_inv_date = pd.to_datetime(current_inv_df["Date of Inventory"]).max()
@@ -29,7 +39,6 @@ def current_inv_ref (path:str) -> Tuple[pd.DataFrame,pd.Timestamp]:
 
     return current_inv_df, current_inv_date
 
-# 1. create new dataframe table of goods produced
 def calc_production_df(bill_of_mats_df: pd.DataFrame, prod_ledger_df: pd.DataFrame, curr_inv_date:pd.Timestamp) -> pd.DataFrame:
     ledger = prod_ledger_df.copy()
     ledger["Date of Production"] = pd.to_datetime(ledger["Date of Production"])
@@ -110,9 +119,63 @@ def update_current_from_prod(prod_df: pd.DataFrame,inv_df: pd.DataFrame) ->pd.Da
             "Item",
             "Qty in Stock"
     ]]
-# 2. left join current inventory to new dataframe table
-# return new current inventory dataframe
 
-# performed in main.py - call functions to execute task
-# performed in main.py - call functions to append current inventory to inventory ledger
-# performed in main.py - call functions to save current and inventory ledger
+def pull_purch_ledger(path:str) -> tuple[pd.DataFrame,pd.Timestamp]:
+    ledger = pd.read_csv(path)
+    if ledger["Date of Purchase"].notna().any():
+        last_purch_date = pd.to_datetime(ledger["Date of Purchase"]).max()
+    else:
+        last_purch_date = pd.Timestamp.min
+    
+    return ledger,last_purch_date
+
+def purch_table_ref(path:str,ledger_date: pd.Timestamp) ->pd.DataFrame:
+    purch_table = pd.read_csv(path)
+    purch_table["Date_dt"] = pd.to_datetime(purch_table["Date of Purchase"])
+
+    unprocessed = purch_table[purch_table["Date_dt"] > ledger_date].copy()
+
+    if unprocessed.empty:
+        print("No new purchases to process. Exiting....")
+        sys.exit(0)
+
+    else:
+        return unprocessed[[
+            "Date of Purchase",
+            "Invoice / Purchase Orders",
+            "Item",
+            "Quantity Bought",
+            "Price (each)",
+            "Subtotal",
+            "Date_dt"
+        ]]
+
+def calc_current_from_purch(purch:pd.DataFrame, curr_inv:pd.DataFrame,curr_date: pd.Timestamp) -> pd.DataFrame:
+    purch_df = purch.copy()
+
+    unprocessed = purch_df[purch_df["Date_dt"] > curr_date].copy()
+
+    if unprocessed.empty:
+        print("Inventory is current. Exiting.")
+        sys.exit(0)
+
+    else:
+        latest_purch_date = unprocessed["Date_dt"].max()
+        print(latest_purch_date)
+    
+        purch_summed_df = unprocessed.groupby("Item", as_index=False)["Quantity Bought"].sum()
+
+        merged_inv = pd.merge(curr_inv , purch_summed_df, on = "Item", how = "outer")
+        merged_inv["Quantity Bought"] = merged_inv["Quantity Bought"].fillna(0)
+        merged_inv["Qty in Stock"] = merged_inv["Qty in Stock"].fillna(0)
+        merged_inv["Qty in Stock"] = merged_inv["Qty in Stock"] + merged_inv["Quantity Bought"]
+
+        merged_inv["Date of Inventory"] = latest_purch_date.strftime("%m/%d/%Y")
+        merged_inv["Inventory Location"] = "Calculated"
+
+        return merged_inv[[
+            "Date of Inventory",
+            "Inventory Location",
+            "Item",
+            "Qty in Stock"
+        ]]

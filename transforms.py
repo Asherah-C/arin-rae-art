@@ -1,5 +1,6 @@
 import pandas as pd
 import duckdb
+import os
 
 
 def path_to_df(path :str):
@@ -120,7 +121,16 @@ def create_current_from_inv(inv_df: pd.DataFrame,) -> pd.DataFrame:
         "Qty in Stock"
     ]]
 
+
+# problematic code below: overwrites the whole file in lieu of just appending
 def append_to_inv(hist_df: pd.DataFrame,current_inv: pd.DataFrame) -> pd.DataFrame:      
     appended_history = pd.concat([hist_df, current_inv], ignore_index = True)
 
     return appended_history.sort_values(by=["Date of Inventory", "Item"], ignore_index = True)
+
+def append_to_purch_ledger(purch:pd.DataFrame,purch_ledger: pd.DataFrame) -> pd.DataFrame:
+    appended = pd.concat([purch_ledger,purch], ignore_index = True)
+
+    return appended.sort_values(by=["Date of Purchase","Item"], ignore_index=True)
+# ------
+
