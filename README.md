@@ -40,4 +40,6 @@ USE: echo "Date of Purchase,Invoice / Purchase Orders,Item,Quantity Bought,Price
 - FACT - Event Sales.csv (from sales_filename when -s is used)
 - FACT - Events.csv (from sales_filename when -s is used)
 - FACT - Inventory History.csv (appended with current inventory, reduced by sales when -s or -i is used)
-- DIM - Current Inventory.csv (Written/Overwritten when -s or -i used)
+- FACT - Purchases Ledger.csv (tracks purchases)
+- FACT - Production Ledger.csv (tracks production)
+- DIM - Current Inventory.csv (Written/Overwritten for all activities that affect current inventory count, including stock levels and production/purchase flags)

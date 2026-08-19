@@ -3,7 +3,7 @@ import pandas as pd
 import duckdb
 import sys
 import argparse
-from transforms import path_to_df, exclude_columns, sales_transform, inv_transform, event_transform, create_current_inv, append_to_inv,create_current_from_inv,append_to_purch_ledger
+from transforms import path_to_df, exclude_columns, sales_transform, inv_transform, event_transform, create_current_inv, append_to_inv,create_current_from_inv,append_to_purch_ledger, current_inv_enrichment, production_query, purchase_query
 from validations import test_inv, test_sales, eval_sales_current, eval_new_hist_file
 from calculations import prod_table_ref, prod_ref, current_inv_ref, calc_production_df, update_current_from_prod, calc_current_from_purch, purch_table_ref, pull_purch_ledger
 
@@ -12,11 +12,17 @@ default_sales = "Inventory - FACT - Historical Sales.csv"
 prod_table = "Inventory - DIM - Production Table.csv"
 prod_ledger_source = "Inventory - FACT - Production Ledger.csv"
 purch_ledger = "Inventory - FACT - Puchases.csv"
+master_table_path = "Inventory - DIM-Master Item Table.csv"
+stock_lvl_path = "Inventory - DIM - Item Stock Level.csv"
+stock_exceptions_path = "Inventory - DIM - Stock Level Exceptions.csv"
+
 transformed_inv_file = "FACT - Inventory History.csv"
 transformed_sales = "FACT - Event Sales.csv"
 current_inventory_file = "DIM - Current Inventory.csv"
 purchases_ledger_file = "FACT - Purchases Ledger.csv"
 prod_ledger = "FACT - Production Ledger.csv"
+
+
 
 def process_sales (path: str):
     sales = path_to_df(path)
@@ -78,6 +84,13 @@ def append_to_prod_ledger(prod_ledger: str, prod_to_process: pd.DataFrame) -> pd
     )
     print(f"{prod_ledger} appended. {len(prod_to_process)} rows added.")
 
+def enhanced_current_inv(current_inv:pd.DataFrame):
+
+    enriched = current_inv_enrichment(current_inv, master_table_path)
+    prod  = production_query(enriched,stock_lvl_path,stock_exceptions_path)
+    purch = purchase_query(prod)
+    write_current_inv(purch)
+
 def inventory_processing(args, inv_history):
     print("Processing inventory data...")
 
@@ -87,7 +100,7 @@ def inventory_processing(args, inv_history):
     if test_inv(inv_df,inv_history):
         print("New Inventory Data found. Updating DIM - Current Inventory.csv and appending FACT - Inventory History.csv")
         current_inv = create_current_from_inv (inv_df)
-        write_current_inv (current_inv)
+        enhanced_current_inv (current_inv)
 
         if new_hist:
             write_new_inventory(inv_df)
@@ -110,7 +123,7 @@ def sales_processing(args):
             inv_df = pd.read_csv(current_inventory_file)
             current_inv_df = process_current_inv(sales_df,inv_df)
 
-            write_current_inv(current_inv_df)
+            enhanced_current_inv(current_inv_df)
             inv_hist = pd.read_csv(transformed_inv_file)
             append_current_inv(inv_hist, current_inv_df)
     else:
@@ -123,6 +136,7 @@ def production_processing(args):
     current_inv_path= args.current_inv
     inv_hist_path = args.inv_history
     prod_ledger_path = args.prod_ledger_processed
+    
 
     # Run Validation Checks of Fail out
 
@@ -135,7 +149,7 @@ def production_processing(args):
     append_to_prod_ledger(prod_ledger_path,production_table)
     new_current_inv = update_current_from_prod(production_table,current_inv)
 
-    write_current_inv(new_current_inv)
+    enhanced_current_inv(new_current_inv)
     append_current_inv(inv_df,new_current_inv)
     
 
@@ -159,7 +173,7 @@ def purchases_processing(args):
 
     inventory_df = pd.read_csv(inv_hist_path)
 
-    write_current_inv(new_curr_inv)
+    enhanced_current_inv(new_curr_inv)
     append_current_inv(inventory_df,new_curr_inv)
 
 def main():
@@ -234,6 +248,24 @@ def main():
         default = prod_ledger,
         metavar = "FILE",
         help = "Path to finished production ledger CSV file"
+    )
+    parser.add_argument(
+        "--master",
+        default = master_table_path,
+        metavar = "FILE",
+        help = "Path to master item table CSV file"
+    )
+    parser.add_argument(
+        "--stock_lvl",
+        default = stock_lvl_path,
+        metavar = "FILE",
+        help = "Path to stock level table CSV file"
+    )
+    parser.add_argument(
+        "--stk_exceptions",
+        default = stock_exceptions_path,
+        metavar = "FILE",
+        help = "Path to stock level exceptions table CSV file"
     )
     args = parser.parse_args()
 

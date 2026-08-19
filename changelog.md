@@ -17,7 +17,11 @@
 * **Purchases Integration** Accepts raw purchases csv for ETL into current inventory and inventory ledger while presnting a cleaner set of data for BI.
 * **Running Production Log** Saves and production log as `FACT - Production Ledger.csv`
 
+# 1.0.0 Enhanced Current Inventory!
+### ✨ New Features
+* **Enhanced Current Inventory** Allows for quick Power BI Dashboard Deployment without excessive latency from calculated tables by integrating multiple tables into a single source.
+
 ### Known Bugs & Issues
-* **Only one task performed per date.** Purchase, Productioon, Sales, or Inventory
 * **Purchases Functionality requires an empty ledger file to exist.**
 * **Append functions are memory intensive as file grows in size. will need to alter code later**
+* **Master Item, Stock Level, and Exceptions Tables flags are non-functioning.**
