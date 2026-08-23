@@ -2,6 +2,58 @@ import pandas as pd
 import duckdb
 import os
 
+def initialize_current_inv_query (master_df : pd.DataFrame, stock_lvl_path : str, stock_exceptions_path : str ) -> pd.DataFrame:
+    master_table = master_df.copy()
+    stock_lvl_df = pd.read_csv(stock_lvl_path)
+    stock_exc_df = pd.read_csv(stock_exceptions_path)
+    query = """
+    WITH master_inv AS (
+    SELECT
+        '7/1/2026' AS "Date of Inventory",
+        'Initiziation' AS "Inventory Location",
+        Key AS Item,
+        Style,
+        Subcategory,
+        Category,
+        "Final Product",
+        "Input Product",
+        0 AS "Qty in Stock",
+        0 AS "Stock Level",
+        0 AS "Inventory Shortfall"
+    FROM master_table
+    ),
+    combined_print AS (
+    SELECT
+        '7/1/2026' AS "Date of Inventory",
+        'Initiziation' AS "Inventory Location",
+        Style || '-SumP' AS Item,
+        Style,
+        'SumPrint' AS Subcategory,
+        'Print' AS Category,
+        TRUE AS "Final Product",
+        FALSE AS "Input Product",
+        0 AS "Qty in Stock",
+        0 AS "Stock Level",
+        0 AS "Inventory Shortfall"
+    FROM master_inv
+    WHERE Category = 'Print'
+    AND "Final Product" = TRUE
+    GROUP BY Style
+    )
+    SELECT * FROM master_inv
+    UNION ALL
+    SELECT * from combined_print
+    ORDER BY Item
+
+"""
+
+    initial_inv = duckdb.query(query).df()
+
+    initial_inv_prod = production_query(initial_inv,stock_lvl_path,stock_exceptions_path)
+
+    full_ini_current_inv = purchase_query(initial_inv_prod)
+
+    return(full_ini_current_inv)
 
 def path_to_df(path :str):
     datafile = pd.read_csv(path)
@@ -70,11 +122,35 @@ def inv_transform(datafile: pd.DataFrame,query) -> pd.DataFrame:
 
     return duckdb.query(unpivot).df()
 
+# def inv_transform(datafile,query):
+#   exc_col_query = duckdb.query(query).df()
+
+#   unpivot = """
+#        WITH unpivoted as (
+#            FROM  exc_col_query
+#            UNPIVOT INCLUDE NULLS (
+#                stock_qty FOR item_key IN (
+#                    COLUMNS (* EXCLUDE(
+#                    "Date of Inventory",
+#                    "Inventory Location",
+#                    "Notes"
+#                )))
+#            )
+#        )
+#        PIVOT unpivoted
+#        ON "Date of Inventory"
+#        USING COALESCE(SUM(stock_qty),0)
+#        GROUP BY item_key
+#        ORDER BY item_key 
+#    """
+
+#    return duckdb.query(unpivot).df()
+
 def event_transform(datafile:  pd.DataFrame,query) ->  pd.DataFrame:
     exc_col_query = duckdb.query(query).df()
 
     event_query = """
-        SELECT "Date of Sales", "Total Sales($)","(Total) Tabling and Additional Costs ($)","Event Notes (weather, etc)" FROM datafile
+        SELECT "Date of Sales", "Name of Event/ Venue", "Total Sales($)","(Total) Tabling and Additional Costs ($)","Event Notes (weather, etc)" FROM datafile
     """
 
     return duckdb.query(event_query).df()
@@ -121,13 +197,24 @@ def create_current_from_inv(inv_df: pd.DataFrame,) -> pd.DataFrame:
         "Qty in Stock"
     ]]
 
+def append_to_inv(hist_path: pd.DataFrame,current_inv: pd.DataFrame) -> pd.DataFrame:
+
+    query ="""
+    SELECT
+        "Date of Inventory",
+        "Inventory Location",
+        Item,
+        "Qty in Stock"
+    FROM current_inv AS c
+    WHERE Subcategory != 'SumPrint'
+    ORDER BY Item
+"""
+    trimmed_current = duckdb.query(query).df()
+    rows = len(trimmed_current)
+    trimmed_current.to_csv(hist_path, mode='a', header=False, index=False)
+    print(f"Current inventory appended to: {inv_filename}. {rows} rows added.")
 
 # problematic code below: overwrites the whole file in lieu of just appending
-def append_to_inv(hist_df: pd.DataFrame,current_inv: pd.DataFrame) -> pd.DataFrame:      
-    appended_history = pd.concat([hist_df, current_inv], ignore_index = True)
-
-    return appended_history.sort_values(by=["Date of Inventory", "Item"], ignore_index = True)
-
 def append_to_purch_ledger(purch:pd.DataFrame,purch_ledger: pd.DataFrame) -> pd.DataFrame:
     appended = pd.concat([purch_ledger,purch], ignore_index = True)
 
@@ -151,9 +238,9 @@ def current_inv_enrichment(current_df: pd.DataFrame, master_table_path: str) ->p
         m."Final Product",
         m."Input Product",
         c."Qty in Stock"
-    FROM current_df as c
-    INNER JOIN master_df as m
-        ON c.Item = M.Key
+    FROM master_df as m
+    INNER JOIN current_df as c
+        ON c.Item = m.Key
     ) 
     , combined_print as(
         SELECT
@@ -187,6 +274,7 @@ def production_query(current_inv_enriched: pd.DataFrame,stock_lvl_path: str, sto
     stock_exc_df = pd.read_csv(stock_exceptions_path)
     
     production_query = """
+    WITH prod_update AS(
     SELECT 
         e."Date of Inventory",
         e."Inventory Location",
@@ -214,7 +302,24 @@ def production_query(current_inv_enriched: pd.DataFrame,stock_lvl_path: str, sto
     WHERE e.Subcategory IN ('SumPrint', 'Card, Greeting', 'Sticker')
             OR e."Input Product" = TRUE
     ORDER BY e.Item
-
+    )
+    SELECT 
+        c."Date of Inventory",
+        c."Inventory Location",
+        c.Item,
+        c.Style,
+        c.Subcategory,
+        c.Category,
+        c."Final Product",
+        c."Input Product",
+        c."Qty in Stock",
+        c."Stock Level",
+        c."Inventory Shortfall",
+        p."Add to Production Queue"
+    FROM enriched_inv AS c
+    LEFT JOIN prod_update AS  p
+        ON c.Item = p.Item
+    ORDER BY c.Item
     """
 
     return duckdb.query(production_query).df()

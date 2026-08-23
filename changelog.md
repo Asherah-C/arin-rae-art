@@ -25,3 +25,18 @@
 * **Purchases Functionality requires an empty ledger file to exist.**
 * **Append functions are memory intensive as file grows in size. will need to alter code later**
 * **Master Item, Stock Level, and Exceptions Tables flags are non-functioning.**
+* **Production and Purchas Algo needs to be strictly less, not less or equal to.** Flags items erroneously for production when exactly the stock level is reached.
+* **Current Inventory is destructive at the moment, causing lost data to fall off when not touched by current activity.**
+
+# 1.1.0 Initialization and Standardization
+* **Standardized and initialization of database** Eliminates the echo/touch manual entry with -ini
+
+### Resolved Bugs
+* Production Runs Dropped Current Inventory Rows. This helps resolve one source of current inventory destruction.
+* Master, Stock, and stock exception flags are functioning.
+
+### Known Bugs & Issues
+* **Purchases Functionality requires an empty ledger file to exist.**
+* **Append functions are memory intensive as file grows in size. will need to alter code later**
+* **Production and Purchas Algo needs to be strictly less, not less or equal to.** Flags items erroneously for production when exactly the stock level is reached.
+* **Current Inventory is destructive at the moment, causing lost data to fall off when not touched by current activity.**

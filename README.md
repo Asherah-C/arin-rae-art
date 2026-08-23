@@ -14,6 +14,7 @@
 python3 main.py [flag] (option:path) 
 
 ## Flags (mutually exclusive)
+- -ini : initialize the database (new setup)
 - -s : run sales
 - -i : set inventory
 - -pro: production
@@ -28,13 +29,12 @@ python3 main.py [flag] (option:path)
 -pro "Inventory - FACT - Production Ledger.csv"
 -pur "Inventory - FACT - Puchases.csv"
 --table "Inventory - DIM - Production Table.csv"
---ledger "Inventory - FACT - Production Ledger.csv"
+--master "Inevntory - DIM-Master Item Table.csv"
+--stock_lvl ""Inventory - DIM - Item Stock Level.csv"
+--stk_exceptions Inventory - DIM - Stock Level Exceptions.csv"
+--pro_ledger_processed "FACT - Production Ledger.csv"
 --current_inv "DIM - Current Inventory.csv"
 --inv_history "FACT - Inventory History.csv"
-
-Required file: "FACT - Inventory History.csv" (import or touch to begin a new instance) NOTE: if you create a new file, be sure to have the following columns placed, or a pandas EmptyDataError occurs: "Date of Inventory,Inventory Location,Item,Qty in Stock"
-USE: echo "Date of Inventory,Inventory Location,Item,Qty in Stock" > "FACT - Inventory History.csv"
-USE: echo "Date of Purchase,Invoice / Purchase Orders,Item,Quantity Bought,Price (each),Subtotal,Date_dt" > "FACT - Purchases Ledger.csv"
 
 ## Outputs (Default File Names)
 - FACT - Event Sales.csv (from sales_filename when -s is used)
