@@ -3,37 +3,42 @@ import pandas as pd
 import duckdb
 import sys
 import argparse
-from transforms import initialize_current_inv_query , path_to_df, exclude_columns, sales_transform, inv_transform, event_transform, create_current_inv, append_to_inv,create_current_from_inv,append_to_purch_ledger, current_inv_enrichment, production_query, purchase_query
-from validations import test_inv, test_sales, eval_sales_current, eval_new_hist_file
-from calculations import prod_table_ref, prod_ref, current_inv_ref, calc_production_df, update_current_from_prod, calc_current_from_purch, purch_table_ref, pull_purch_ledger
+from transforms import initialize_current_inv_query , path_to_df, exclude_columns, sales_transform, inv_transform, event_transform, create_current_inv, append_to_inv,create_current_from_inv, current_inv_enrichment, production_query, purchase_query, backdating_inventory, backdating_sales_events, backdating_purchases, purch_transform, prod_transform, unprocessed_table
+from validations import  test_dates_vs_current, compare_dates
+from calculations import prod_table_ref, prod_ref, current_inv_ref, calc_production_df, update_current_from_prod, calc_current_from_purch, pull_purch_ledger
 
 # Raw Data Files Paths
 default_inv = "Inventory - FACT - Inventory Snapshots.csv"
 default_sales = "Inventory - FACT - Historical Sales.csv"
 prod_table = "Inventory - DIM - Production Table.csv"
 prod_ledger_source = "Inventory - FACT - Production Ledger.csv"
-purch_ledger = "Inventory - FACT - Puchases.csv"
+purchases = "Inventory - FACT - Puchases.csv"
 master_table_path = "Inventory - DIM-Master Item Table.csv"
 stock_lvl_path = "Inventory - DIM - Item Stock Level.csv"
 stock_exceptions_path = "Inventory - DIM - Stock Level Exceptions.csv"
 
 # Processed data File Paths
 transformed_inv_file = "FACT - Inventory History.csv"
-transformed_sales = "FACT - Event Sales.csv"
+events_sales_ledger = "FACT - Event Sales.csv"
 current_inventory_file = "DIM - Current Inventory.csv"
-purchases_ledger_file = "FACT - Purchases Ledger.csv"
+purchases_ledger = "FACT - Purchases Ledger.csv"
 prod_ledger = "FACT - Production Ledger.csv"
+events_path = "FACT - Events.csv"
 
 # Database Initialization
 def initialize_db(args):
     master_table_path = args.master
     inv_history_path = args.inv_history
     purch_ledger_path = args.purch_ledger
+    prod_ledger_path = args.prod_ledger_processed
     stock_lvl_path = args.stock_lvl
     stock_exceptions_path= args.stk_exceptions
 
     inv_ledger_headers = ["Date of Inventory","Inventory Location","Item","Qty in Stock"]
-    purch_ledger_headers = ["Date of Purchase", "Invoice / Purchase Orders","Item","Quantity Bought","Price (each)","Subtotal","Date_dt"]
+    purch_ledger_headers = ["Date of Purchase", "Invoice / Purchase Orders","Item","Quantity Bought","Price (each)","Subtotal"]
+    prod_ledger_headers = ["Date of Production", "Item", "Type", "Delta Qty"]
+    sales_headers = ["Date of Sales","Event Name","Item","Qty Sold"]
+    events_headers = ["Date of Sales","Event Name","Total Sales($)","(Total) Tabling and Additional Costs ($)","Event Notes (weather, etc)"]
 
     if not os.path.exists(inv_history_path):
         inv_df = pd.DataFrame(columns = inv_ledger_headers)
@@ -52,29 +57,47 @@ def initialize_db(args):
     else:
         print(f"{purch_ledger_path} already exists.")
 
-    master_df = pd.read_csv(master_table_path)
-    current_inv = initialize_current_inv_query(master_df,stock_lvl_path,stock_exceptions_path)
+    if not os.path.exists(events_sales_ledger):
+        sales_df = pd.DataFrame(columns = sales_headers)
+        sales_df.to_csv(events_sales_ledger, index = False)
+        print(f"Sales Events file initialized as {events_sales_ledger}.")
 
-    append_to_inv(inv_history_path,current_inv)
-    write_current_inv(current_inv)
-    
+    else:
+        print(f"{events_sales_ledger} already exists.")
 
+    if not os.path.exists(events_path):
+        events_df = pd.DataFrame(columns = events_headers)
+        events_df.to_csv(events_path, index = False)
+        print(f"Sales Events file initialized as {events_path}.")
 
-def process_sales (path: str):
-    sales = path_to_df(path)
-    query= exclude_columns(sales)
-    sales_transformed = sales_transform(sales,query)
-    events = event_transform(sales,query)
+    else:
+        print(f"{events_sales_ledger} already exists.")
 
-    return path, sales_transformed, events
+    if not os.path.exists(current_inventory_file):
+        master_df = pd.read_csv(master_table_path)
+        current_inv = initialize_current_inv_query(master_df,stock_lvl_path,stock_exceptions_path)
+
+        append_to_inv(inv_history_path,current_inv)
+        write_current_inv(current_inv)
+
+    else:
+        print(f"{current_inventory_file} already exists.")
+
+    if not os.path.exists(prod_ledger_path):
+        prod_df = pd.DataFrame(columns = prod_ledger_headers)
+        prod_df.to_csv(prod_ledger_path, index = False)
+        print(f"Sales Events file initialized as {prod_ledger_path}.")
+
+    else:
+        print(f"{eprod_ledger_path} already exists.")
 
 def save_salesevents (path, sales, events):
-    sales_filename = transformed_sales
-    sales.to_csv(sales_filename, index= False)
-    print(f"{path} transformed to: {sales_filename}. {len(sales)} rows saved.")
-    event_filename = "FACT - Events.csv"
-    events.to_csv(event_filename, index=False)
-    print(f"{path} transformed to: {event_filename}. {len(events)} rows saved.")
+ 
+    sales.to_csv(events_sales_ledger, index= False)
+    print(f"{path} transformed to: {events_sales_ledger}. {len(sales)} rows saved.")
+  
+    events.to_csv(events_path, index=False)
+    print(f"{path} transformed to: {events_path}. {len(events)} rows saved.")
 
 def process_inv (path):
     inv = path_to_df(path)
@@ -90,7 +113,7 @@ def process_current_inv (sales_df, inv_df):
 def write_current_inv(current_inv: pd.DataFrame):
     current_filename = current_inventory_file
     current_inv.to_csv(current_filename, index= False)
-    print(f"{current_filename} Overwitten with current data. {len(current_inv)} rows saved.")
+    print(f"{current_filename} overwitten with current data. {len(current_inv)} rows saved.")
 
 def write_new_inventory(inv_df: pd.DataFrame) -> pd.DataFrame:
     inv_filename = transformed_inv_file
@@ -127,21 +150,36 @@ def enhanced_current_inv(current_inv:pd.DataFrame):
     purch = purchase_query(prod)
     write_current_inv(purch)
 
+    return purch
+
+# Proccessing functions
 def inventory_processing(args, inv_history):
     print("Processing inventory data...")
-
+    hist_path = args.inv_history
     _,inv_df = process_inv(args.inventory)
-    new_hist = eval_new_hist_file(transformed_inv_file)
 
-    if test_inv(inv_df,inv_history):
-        print("New Inventory Data found. Updating DIM - Current Inventory.csv and appending FACT - Inventory History.csv")
-        current_inv = create_current_from_inv (inv_df)
-        enhanced_current_inv (current_inv)
+    query_type= "inv"
+    all_dates, dates_df =  compare_dates(query_type, inv_df,inv_history)
+ 
+    if not all_dates:
+        print("New Inventory Data found...")
+        print("Comparing to Current Inventory...")
 
-        if new_hist:
-            write_new_inventory(inv_df)
+        current_path = args.current_inv
+        current_df = pd.read_csv(current_path)
+        if test_dates_vs_current(dates_df, current_df):
+            "New inventory data is most current. Updating current inventory..."
+            curr_inv = create_current_from_inv (inv_df)
+            current_inv = enhanced_current_inv (curr_inv)
+            append_to_inv(hist_path,current_inv)
         else:
-            append_current_inv(inv_history, current_inv)
+            print("Associated inventory data predates current inventory.")
+
+            # TO ADD : FUNCTIONALITY TO REBUILD MOST ACCURATE CURRENT INVENTORY FROM MOST RECENT (BUT OLD) RAW INVENTORY FILE
+
+        print("Appending missing data to inventory history.")
+        backdating_inventory(dates_df,inv_df,hist_path)
+
         print("All inventory files updated.")
 
     else:
@@ -149,72 +187,127 @@ def inventory_processing(args, inv_history):
 
 def sales_processing(args):
     print("Processing sales data...")
+    sales_path = args.sales
+    hist_path = args.inv_history
 
-    path_sales, sales_df,events_df = process_sales(args.sales)
+    sales_df = path_to_df(sales_path)
+    query= exclude_columns(sales_df)
+    sales_transformed = sales_transform(sales_df,query)
+    events = event_transform(sales_df,query)
 
-    if test_sales(sales_df,transformed_sales):
-        save_salesevents (path_sales, sales_df, events_df)
+    sales_history = pd.read_csv(events_sales_ledger)
+    events_history = pd.read_csv(events_path) 
 
-        if eval_sales_current(sales_df,current_inventory_file):
-            inv_df = pd.read_csv(current_inventory_file)
-            current_inv_df = process_current_inv(sales_df,inv_df)
+    query_type = "sales"
+    sales_all_dates, dates_df = compare_dates(query_type, sales_transformed, sales_history)
+    
 
-            enhanced_current_inv(current_inv_df)
-            inv_hist = pd.read_csv(transformed_inv_file)
-            append_current_inv(inv_hist, current_inv_df)
+    if not sales_all_dates:
+        print("New sales data found....")
+        print("Comparing to current inventory....")
+
+        current_path = args.current_inv
+        current_df = pd.read_csv(current_path)
+        if test_dates_vs_current(dates_df, current_df):
+            "New sales data is most current. Updating current inventory..."
+            curr_inv = create_current_inv (sales_transformed,current_df)
+            current_inv = enhanced_current_inv (curr_inv)
+            append_to_inv(hist_path,current_inv)
+        else:
+            print("Associated sales data predates current inventory.")
+
+            # TO ADD : FUNCTIONALITY TO REBUILD MOST ACCURATE CURRENT INVENTORY FROM MOST RECENT DATA FOLLOWING LATEST INVENTORY
+
+        print("Appending Missing Sales Data....")
+        backdating_sales_events(query_type, dates_df, sales_transformed, events_sales_ledger)
     else:
-        print("Supplied Sales Data is up-to-date. No action required.")
+        print("Sales data is current and up-to-date.")
+
+    events_transformed = event_transform(sales_df,query)
+    events_all_dates, events_dates_df = compare_dates(query_type, events_transformed, events_history)
+
+    if not events_all_dates:
+        print("Updating events table....")
+        type="event"
+        backdating_sales_events(type,events_dates_df,events_transformed, events_path)
+    else:
+        "Events table is up-to-date."
 
 def production_processing(args):
     print("Processing Production Data...")
-    ledger_path = args.production
+    prod_path = args.production
     bill_of_mats_path = args.prod_table
     current_inv_path= args.current_inv
     inv_hist_path = args.inv_history
-    prod_ledger_path = args.prod_ledger_processed
+    prod_hist_path = args.prod_ledger_processed
     
+    query_type = "production"
+    production_raw = pd.read_csv(prod_path)
+    production_df = prod_transform(production_raw)
+    prod_hist_df = pd.read_csv(prod_hist_path)
 
-    # Run Validation Checks of Fail out
+    all_dates, dates_df = compare_dates(query_type,production_df,prod_hist_df)
 
-    inv_df = pd.read_csv(inv_hist_path)
-    bom_table = prod_table_ref(bill_of_mats_path)
-    ledger = prod_ref(ledger_path)
-    current_inv, date = current_inv_ref(current_inv_path)
-    production_table = calc_production_df(bom_table,ledger,date)
+    if not all_dates:
+        print("New Production Data found....")
+        print("Building itemized production inventory changes table....")
+        prod_to_process = unprocessed_table(query_type,dates_df,production_df)
+        bom_table = prod_table_ref(bill_of_mats_path)
 
-    append_to_prod_ledger(prod_ledger_path,production_table)
-    new_current_inv = update_current_from_prod(production_table,current_inv)
+        production_table = calc_production_df(bom_table,prod_to_process)
+        print(f"New production data unpivoted. {len(production_table)} rows need updating.")
 
-    enhanced_current_inv(new_current_inv)
-    append_current_inv(inv_df,new_current_inv)
-    
+        print("Comparing to Current Inventory")
+        current_df = pd.read_csv(current_inv_path)
+        if test_dates_vs_current(dates_df,current_df):
+            print("New Data is most current. Updating Current Inventory...")
+            new_curr_inv = update_current_from_prod(production_table,current_df)
+            current_inv = enhanced_current_inv(new_curr_inv)
+            append_to_inv(inv_hist_path,current_inv)
+        else:
+            print("Associated purchases data predates current inventory.")
 
+            # TO ADD: FUNCTIONALITY TO REBUILD CURRENT INVENTORY WHEN DATES FALL BETTWEN CURRENT INVENTORY AND PREVIOUS HAND COUNT
 
-
-
+        print("Appending missing sales data....")
+        backdating_purchases(query_type,production_table,prod_hist_path)
+    else:
+        print("Purchases Data up-to-date.")
+                 
 
 def purchases_processing(args):
     print("Processing Purchases Data...")
     current_inv_path = args.current_inv
-    ledger_path = args.purch_ledger
+    purch_ledger_path = args.purch_ledger
     inv_hist_path = args.inv_history
-    purchase_path = args.purchases
+    purchases_path = args.purchases
 
-    # Run Validation Checks
+    query_type = "purchases"
+    purchases_raw = pd.read_csv(purchases_path)
+    purchases_df = purch_transform(purchases_raw)
+    purch_hist_df = pd.read_csv(purch_ledger_path)
 
-    purch_ledger, ledger_date = pull_purch_ledger(ledger_path)
-    purch_to_process = purch_table_ref(purchase_path,ledger_date)
-    append_purch_ledger(purch_ledger,purch_to_process)
+    all_dates, dates_df = compare_dates(query_type, purchases_df, purch_hist_df)
 
+    if not all_dates:
+        print("New Purchases Data found....")
+        print("Comparing to Current Inventory")
+        current_df = pd.read_csv(current_inv_path)
+        purch_to_process = unprocessed_table(query_type,dates_df,purchases_df)
+        if test_dates_vs_current(dates_df,current_df):
+            print("New Data is most current. Updating Current Inventory...")
+            new_curr_inv = calc_current_from_purch(purch_to_process,current_df)
+            current_inv = enhanced_current_inv(new_curr_inv)
+            append_to_inv(inv_hist_path,current_inv)
+        else:
+            print("Associated purchases data predates current inventory.")
 
-    print(f"Updating {current_inv_path} and {inv_hist_path} with new purchases data.")
-    curr_inv, curr_date = current_inv_ref(current_inv_path)
-    new_curr_inv = calc_current_from_purch(purch_to_process,curr_inv,curr_date)
+            # TO ADD: FUNCTIONALITY TO REBUILD CURRENT INVENTORY WHEN DATES FALL BETTWEN CURRENT INVENTORY AND PREVIOUS HAND COUNT
 
-    inventory_df = pd.read_csv(inv_hist_path)
-
-    enhanced_current_inv(new_curr_inv)
-    append_current_inv(inventory_df,new_curr_inv)
+        print("Appending missing sales data....")
+        backdating_purchases(query_type,purch_to_process,purch_ledger_path)
+    else:
+        print("Purchases Data up-to-date.")
 
 def main():
     parser = argparse.ArgumentParser(
@@ -254,7 +347,7 @@ def main():
             "-pur",
             "--purchases",
             nargs = "?",
-            const = purch_ledger,
+            const = purchases,
             default = None,
             metavar = "FILE",
             help = "Path to raw purchases ledger CSV file",
@@ -288,7 +381,7 @@ def main():
     )
     parser.add_argument(
         "--purch_ledger",
-        default = purchases_ledger_file,
+        default = purchases_ledger,
         metavar = "FILE",
         help = "Path to most recently prepared purchases ledger table CSV file"
     )
@@ -340,7 +433,6 @@ def main():
 
     if args.purchases:
         purchases_processing(args)
-
 
 if __name__ == "__main__":
     main()

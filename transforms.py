@@ -66,6 +66,51 @@ def exclude_columns(datafile:  pd.DataFrame):
     """
     return query
 
+def purch_transform(dataframe) -> pd.DataFrame:
+    query = """
+    SELECT 
+        "Date of Purchase",
+        "Invoice / Purchase Orders",
+        "Item",
+        "Quantity Bought",
+        "Price (each)",
+        "Subtotal"
+    FROM dataframe
+    ORDER BY "Date of Purchase"
+    """
+    ex_col = duckdb.query(query).df()
+    return ex_col
+
+def prod_transform(dataframe) -> pd.DataFrame:
+    query = """
+    SELECT 
+        "Date of Production",
+        "Item Made" AS "Item",
+        "Style",
+        "Subcategory",
+        "Qty Made" as "Qty Delta"
+    FROM dataframe
+    ORDER BY "Date of Production"
+    """
+    ex_col = duckdb.query(query).df()
+    return ex_col
+
+def unprocessed_table(query_type,dates_df:pd.DataFrame, raw_df: pd.DataFrame) ->pd.DataFrame:
+    if query_type == "purchases":
+        date_col = "Date of Purchase"
+    if query_type == "production":
+        date_col = "Date of Production"
+
+    query = f"""
+    SELECT r.*
+    FROM dates_df as d
+    LEFT JOIN raw_df as r
+        ON d.date = r."{date_col}"
+    """
+    purch_to_process = duckdb.query(query).df()
+
+    return purch_to_process
+
 def sales_transform(datafile:  pd.DataFrame,query) -> pd.DataFrame:
     exc_col_query = duckdb.query(query).df()
 
@@ -86,7 +131,7 @@ def sales_transform(datafile:  pd.DataFrame,query) -> pd.DataFrame:
         )
         SELECT 
             "Date of Sales",
-            "Name of Event/ Venue",
+            "Name of Event/ Venue" AS "Event Name",
             Item,
             -- If value is null, empty string, or non-numeric, default to 0
             COALESCE(TRY_CAST(qty_sold AS DOUBLE), 0) AS "Qty Sold"
@@ -150,7 +195,7 @@ def event_transform(datafile:  pd.DataFrame,query) ->  pd.DataFrame:
     exc_col_query = duckdb.query(query).df()
 
     event_query = """
-        SELECT "Date of Sales", "Name of Event/ Venue", "Total Sales($)","(Total) Tabling and Additional Costs ($)","Event Notes (weather, etc)" FROM datafile
+        SELECT "Date of Sales", "Name of Event/ Venue" AS "Event Name", "Total Sales($)","(Total) Tabling and Additional Costs ($)","Event Notes (weather, etc)" FROM datafile
     """
 
     return duckdb.query(event_query).df()
@@ -161,7 +206,7 @@ def create_current_inv(sales_df: pd.DataFrame,inv_df: pd.DataFrame) ->pd.DataFra
     sales_df_temp = sales_df.copy()
     sales_df_temp["Date_dt"] = pd.to_datetime(sales_df_temp["Date of Sales"])
 
-    filtered_sales = sales_df_temp[sales_df_temp["Date_dt"] >= latest_inv_date]
+    filtered_sales = sales_df_temp[sales_df_temp["Date_dt"] > latest_inv_date]
 
     aggregated_sales = (filtered_sales.groupby("Item", as_index = False)["Qty Sold"].sum()) # a positive number
 
@@ -197,7 +242,8 @@ def create_current_from_inv(inv_df: pd.DataFrame,) -> pd.DataFrame:
         "Qty in Stock"
     ]]
 
-def append_to_inv(hist_path: pd.DataFrame,current_inv: pd.DataFrame) -> pd.DataFrame:
+# cleaner data append from current to inventory history
+def append_to_inv(hist_path: pd.DataFrame,current_inv: pd.DataFrame):
 
     query ="""
     SELECT
@@ -212,14 +258,48 @@ def append_to_inv(hist_path: pd.DataFrame,current_inv: pd.DataFrame) -> pd.DataF
     trimmed_current = duckdb.query(query).df()
     rows = len(trimmed_current)
     trimmed_current.to_csv(hist_path, mode='a', header=False, index=False)
-    print(f"Current inventory appended to: {inv_filename}. {rows} rows added.")
+    print(f"Current inventory appended to: {hist_path}. {rows} rows added.")
 
-# problematic code below: overwrites the whole file in lieu of just appending
-def append_to_purch_ledger(purch:pd.DataFrame,purch_ledger: pd.DataFrame) -> pd.DataFrame:
-    appended = pd.concat([purch_ledger,purch], ignore_index = True)
+def backdating_inventory (dates_df: pd.DataFrame, raw_df: pd.DataFrame, hist_path:str):
+    query = """
+    SELECT
+        r.*
+    FROM dates_df AS d
+    LEFT JOIN raw_df AS r
+        ON d.date = r."Date of Inventory"
+    ORDER BY r."Date of Inventory", r.Item
+    """
 
-    return appended.sort_values(by=["Date of Purchase","Item"], ignore_index=True)
-# ------
+    inv_count_to_append = duckdb.query(query).df()
+    rows = len(inv_count_to_append)
+    inv_count_to_append.to_csv(hist_path, mode='a', header=False, index=False)
+    print(f"Inventory history updated with new data: {hist_path} updated with {rows} new rows.")
+
+def backdating_sales_events (table_type,dates_df: pd.DataFrame, raw_df: pd.DataFrame, hist_path:str):
+    order_clause = str
+    if table_type == "sales":
+        order_clause = "ORDER BY strptime(r.\"Date of Sales\", \'%m/%d/%Y\') ASC, r.Item ASC"
+    if table_type == "event":
+        order_clause = "ORDER BY strptime(r.\"Date of Sales\", \'%m/%d/%Y\') ASC, r.\"Event Name\" ASC"
+
+    query = f"""
+    SELECT
+        r.*
+    FROM dates_df AS d
+    LEFT JOIN raw_df AS r
+        ON d.date = r."Date of Sales"
+    {order_clause}
+    """
+
+    sales_to_append = duckdb.query(query).df()
+    rows = len(sales_to_append)
+    sales_to_append.to_csv(hist_path, mode='a', header=False, index=False)
+    print(f"{table_type} history updated with new data: {hist_path} updated with {rows} new rows.")
+    
+def backdating_purchases(query_type: str, purch_to_process: pd.DataFrame, hist_path:str):
+    rows = len(purch_to_process)
+    purch_to_process.to_csv(hist_path, mode='a', header=False, index=False)
+    print(f"{query_type} history updated with new data: {hist_path} updated with {rows} new rows.")
 
 
 # --- Enhancing Current Inventory for additional logistics 
@@ -290,7 +370,7 @@ def production_query(current_inv_enriched: pd.DataFrame,stock_lvl_path: str, sto
     CASE
         WHEN e."Final Product" = TRUE
         AND e.Category != 'Sticker'
-        THEN e."Qty in Stock" <= COALESCE(x."Stock Level",s."Reorder Stock Level",0)
+        THEN e."Qty in Stock" < COALESCE(x."Stock Level",s."Reorder Stock Level",0)
         ELSE NULL
     END AS "Add to Production Queue"
     FROM enriched_inv as e
@@ -313,8 +393,8 @@ def production_query(current_inv_enriched: pd.DataFrame,stock_lvl_path: str, sto
         c."Final Product",
         c."Input Product",
         c."Qty in Stock",
-        c."Stock Level",
-        c."Inventory Shortfall",
+        p."Stock Level",
+        p."Inventory Shortfall",
         p."Add to Production Queue"
     FROM enriched_inv AS c
     LEFT JOIN prod_update AS  p
@@ -374,15 +454,15 @@ def purchase_query(production_query: pd.DataFrame) ->pd.DataFrame:
         WHEN p.SubCategory = 'Print'
         THEN p."Qty in Stock" <= p."Stock Level"
             OR
-            d."Add to Production Queue" = TRUE AND (p."Qty in Stock" - p."Stock Level") <= d."Inventory Shortfall"
+            d."Add to Production Queue" = TRUE AND (p."Qty in Stock" - p."Stock Level") < d."Inventory Shortfall"
         WHEN p.Subcategory = 'CStock'
-        THEN p."Qty in Stock" <= p."Stock Level"
+        THEN p."Qty in Stock" < p."Stock Level"
             OR
-            d."Add to Production Queue" = TRUE AND (p."Qty in Stock" - p."Stock Level") <= d."Inventory Shortfall"
+            d."Add to Production Queue" = TRUE AND (p."Qty in Stock" - p."Stock Level") < d."Inventory Shortfall"
         WHEN p.Category = 'Supplies'
-        THEN "Qty in Stock" <= "Stock Level"
+        THEN "Qty in Stock" < "Stock Level"
         WHEN p.Category = 'Sticker'
-        THEN "Qty in Stock" <= "Stock Level"
+        THEN "Qty in Stock" < "Stock Level"
         ELSE NULL
     END AS "Add to Purchase Order"
     FROM production_queue as p

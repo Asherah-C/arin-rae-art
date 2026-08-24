@@ -36,7 +36,24 @@
 * Master, Stock, and stock exception flags are functioning.
 
 ### Known Bugs & Issues
-* **Purchases Functionality requires an empty ledger file to exist.**
 * **Append functions are memory intensive as file grows in size. will need to alter code later**
-* **Production and Purchas Algo needs to be strictly less, not less or equal to.** Flags items erroneously for production when exactly the stock level is reached.
 * **Current Inventory is destructive at the moment, causing lost data to fall off when not touched by current activity.**
+
+# 1.1.1 PATCH NOTES
+
+### ✨ New Features
+* All output files created with correct headers and 0 rows using initialize flag.
+
+### Resolved Bugs
+* Resolved Purchase and production algos to be strictly less than, eliminating erroneous TRUE for purchasing and production.
+* Append to Inventordy History now strictly appends, not a full reconstruction, saving memory as data grows.
+* Removed resolved bugs that were left in queue but had been resolved by 1.1 rollout.
+* Appends do strict appends, reducing memory while preserving data historicity.
+* Current Inventory now appends all active items to inventory history.
+
+### Known Bugs & Issues
+* NEW - Need to correct/overwrite current inventory between inventories when new purchasing, production, and sales data arrives between current inventory date and last hand count date.
+* NEW - Need to recalculate/overwrite current inventory when a newer inventory that predates current inventory arrives. calc all purchases, production, and sales based on that newest inventory date, going forward.
+* NEW - Needs a way to build-in spot check inventories (possible Power BI function over python?)
+* Loading by activity will fail to maintain an accurate telling of events unless they are loaded in order, as they happen.
+* No price or expenses data is ETLed at this time.
