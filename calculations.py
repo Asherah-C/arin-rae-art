@@ -90,6 +90,7 @@ def calc_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataFra
 
 def update_current_from_prod(prod_df: pd.DataFrame,current_df: pd.DataFrame) ->pd.DataFrame:
 
+    # need to add logic to test if current inventtory was a hand count, if hand count, append only dates after inventory, else, append all dates since last and count
     prod_df_temp = prod_df.copy()
     prod_df_temp["Date_dt"] = pd.to_datetime(prod_df_temp["Date of Production"])
     latest_prod_date = prod_df_temp["Date_dt"].max()
@@ -157,3 +158,92 @@ def calc_current_from_purch(purch:pd.DataFrame, curr_inv:pd.DataFrame) -> pd.Dat
         "Item",
         "Qty in Stock"
     ]]
+
+#Pulls unique dates from a date column, based on the correct ledger type
+def unique_dates(ledger_type:str, dataframe: pd.DataFrame) ->pd.data_frame:
+    if ledger_type == "Sales":
+        date_col = "Date of Sales"
+    elif ledger_type == "Inventory":
+        date_col = "Date of Inventory"
+    elif ledger_type == "Purchases":
+        date_col = "Date of Purchase"
+    elif ledger_type == "Production":
+        date_col = "Date of Production"
+    elif ledger_type == "Initialization":
+        date_col = "Date"
+    else:
+        print("Unrecognized ledger_type: Returning None.")
+        return None
+
+    raw_data = dataframe.copy()
+    dates_query = f"""
+    SELECT
+        DISTINCT "{date_col}"
+    FROM raw_data
+    ORDER BY strptime("{date_col}", '%m/%d/%Y') ASC
+    """
+    dates_df = duckdb.query(dates_query).df()
+
+    return dates_df
+
+# Reworks to include Timestamp
+def expand_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataFrame) -> pd.DataFrame:
+    new_ledger = unprocessed_df.copy()
+    new_ledger["Qty Delta"] = pd.to_numeric(new_ledger["Qty Delta"], errors="coerce").fillna(0)
+
+    # Builds a pivoted table of materials for each line of production
+    components_consumed = new_ledger.merge(bill_of_mats_df, on="Subcategory",how="inner")
+
+    #Unpivot the table on components for each item in production, then remove NaN lines
+    component_cols = ["Backboard Size","Plastic Sleeve Size","Matting Size","Frame Size"]
+    existing_col = [c for c in component_cols if c in components_consumed.columns]
+
+    components_consumed = components_consumed.melt(
+        id_vars=["Timestamp","Date of Production","Item","Subcategory","Qty Delta"],
+        value_vars=existing_col,
+        var_name="Component_Type",
+        value_name="Component_Item"
+    ).dropna(subset=["Component_Item"])
+
+    #Rebuild as a component only ledger
+    components_df = pd.DataFrame({
+        "Timestamp": components_consumed["Timestamp"],
+        "Date of Production": components_consumed["Date of Production"],
+        "Item": components_consumed["Component_Item"],
+        "Qty Delta": -1 * components_consumed["Qty Delta"],
+        "Type": "Component Consumption"
+    })
+
+    #build the art prints component to be consumed based on the original dataframe
+    new_ledger["Print_Suffix"] = new_ledger["Subcategory"].apply(
+        lambda x: "-CSto" if str(x).strip().lower().startswith("card") else "-Prin"
+    )
+
+    new_ledger["Print_Item"] = new_ledger["Style"].astype(str).str.strip() + new_ledger["Print_Suffix"]
+
+    art_df = pd.DataFrame({
+        "Timestamp": new_ledger["Timestamp"],
+        "Date of Production": new_ledger["Date of Production"],
+        "Item": new_ledger["Print_Item"],
+        "Qty Delta": -1 * new_ledger["Qty Delta"],
+        "Type": "Style art/card stock Consumption"
+    })
+
+    finished_goods_df = pd.DataFrame({
+        "Timestamp": new_ledger["Timestamp"],
+        "Date of Production": new_ledger["Date of Production"],
+        "Item": new_ledger["Item"],
+        "Qty Delta": new_ledger["Qty Delta"],
+        "Type": "Finished Goods Production"
+    })
+
+    production_delta_df = pd.concat(
+            [components_df, art_df, finished_goods_df],
+            ignore_index=True
+        )
+    
+    aggregated_df = (
+            production_delta_df.groupby(["Timestamp","Date of Production","Item","Type"], as_index=False)["Qty Delta"].sum()
+        )
+
+    return aggregated_df.sort_values(by=["Date of Production","Item"], ignore_index=True)

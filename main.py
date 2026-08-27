@@ -1,4 +1,5 @@
 import os
+import pathlib as Path
 import pandas as pd
 import duckdb
 import sys
@@ -6,8 +7,9 @@ import argparse
 from transforms import initialize_current_inv_query , path_to_df, exclude_columns, sales_transform, inv_transform, event_transform, create_current_inv, append_to_inv,create_current_from_inv, current_inv_enrichment, production_query, purchase_query, backdating_inventory, backdating_sales_events, backdating_purchases, purch_transform, prod_transform, unprocessed_table
 from validations import  test_dates_vs_current, compare_dates
 from calculations import prod_table_ref, prod_ref, current_inv_ref, calc_production_df, update_current_from_prod, calc_current_from_purch, pull_purch_ledger
+from initialization import initialize_outputs, pull_initial_data, initialize_inventory_history, initialize_ledgers
 
-# Raw Data Files Paths
+# Raw Data Files Paths -- to delete after calls are redirected
 default_inv = "Inventory - FACT - Inventory Snapshots.csv"
 default_sales = "Inventory - FACT - Historical Sales.csv"
 prod_table = "Inventory - DIM - Production Table.csv"
@@ -17,79 +19,60 @@ master_table_path = "Inventory - DIM-Master Item Table.csv"
 stock_lvl_path = "Inventory - DIM - Item Stock Level.csv"
 stock_exceptions_path = "Inventory - DIM - Stock Level Exceptions.csv"
 
-# Processed data File Paths
+# Processed data File Paths -- to delete after calls are redirected
 transformed_inv_file = "FACT - Inventory History.csv"
 events_sales_ledger = "FACT - Event Sales.csv"
 current_inventory_file = "DIM - Current Inventory.csv"
 purchases_ledger = "FACT - Purchases Ledger.csv"
 prod_ledger = "FACT - Production Ledger.csv"
 events_path = "FACT - Events.csv"
+master_table_output = "DIM-Master Item Table.csv"
+
+# Unified Path Variables
+master_table_path = "Inventory - DIM-Master Item Table.csv"
+stock_levels_path = "Inventory - DIM - Item Stock Level.csv"
+stock_exceptions_path = "Inventory - DIM - Stock Level Exceptions.csv"
+inv_path = "Inventory - FACT - Inventory Snapshots.csv"
+purchase_path = "Inventory - FACT - Puchases.csv"
+production_ledger_path = "Inventory - FACT - Production Ledger.csv"
+bill_of_mats = "Inventory - DIM - Production Table.csv"
+raw_sales_path = "Inventory - FACT - Historical Sales.csv"
+
+expanded_prod_ledger_path = "FACT - Production Ledger.csv"  
+inv_history_path = "FACT - Inventory History.csv"
+purch_ledger_path = "FACT - Purchases Ledger.csv"
+events_sales_path = "FACT - Event Sales.csv"
+events_path = "FACT - Events.csv"
+current_inventory_path = "DIM - Current Inventory.csv"
+master_table_output = "DIM-Master Item Table.csv"
+
+
+
+### ----------- ARGS Quick Reference -----------
+#    expanded_prod_ledger_path = args.expanded_production 
+#    inv_history_path = args.inv_history
+#    purch_ledger_path = args.purchases_output
+#    events_sales_path = args.sales_output
+#    events_path = args.events
+#    current_inventory_path = args.current_inv
+#    master_table_output = args.master_table_output
+#
+#    master_table_path = args.master_item
+#    stock_levels_path = args.stock_levels
+#    stock_exceptions_path = args.stock_exceptions
+#    inv_path = args.inventory_path
+#    purchase_path = args.purchases_source
+#    production_ledger_path = args.production_path
+#    bill_of_mats = args.bill_of_mats
+#    raw_sales_path = args.sales_source
+# ------------------------------------------------
+
 
 # Database Initialization
 def initialize_db(args):
-    master_table_path = args.master
-    inv_history_path = args.inv_history
-    purch_ledger_path = args.purch_ledger
-    prod_ledger_path = args.prod_ledger_processed
-    stock_lvl_path = args.stock_lvl
-    stock_exceptions_path= args.stk_exceptions
-
-    inv_ledger_headers = ["Date of Inventory","Inventory Location","Item","Qty in Stock"]
-    purch_ledger_headers = ["Date of Purchase", "Invoice / Purchase Orders","Item","Quantity Bought","Price (each)","Subtotal"]
-    prod_ledger_headers = ["Date of Production", "Item", "Type", "Delta Qty"]
-    sales_headers = ["Date of Sales","Event Name","Item","Qty Sold"]
-    events_headers = ["Date of Sales","Event Name","Total Sales($)","(Total) Tabling and Additional Costs ($)","Event Notes (weather, etc)"]
-
-    if not os.path.exists(inv_history_path):
-        inv_df = pd.DataFrame(columns = inv_ledger_headers)
-        inv_df.to_csv(inv_history_path, index = False)
-        print(f"Inventory history initialized as {inv_history_path}.")
-
-    else:
-        print(f"{inv_history_path} already exists.")
-        
-
-    if not os.path.exists(purch_ledger_path):
-        purch_df = pd.DataFrame(columns = purch_ledger_headers)
-        purch_df.to_csv(purch_ledger_path, index = False)
-        print(f"Purchasing history initialized as {purch_ledger_path}.")
-
-    else:
-        print(f"{purch_ledger_path} already exists.")
-
-    if not os.path.exists(events_sales_ledger):
-        sales_df = pd.DataFrame(columns = sales_headers)
-        sales_df.to_csv(events_sales_ledger, index = False)
-        print(f"Sales Events file initialized as {events_sales_ledger}.")
-
-    else:
-        print(f"{events_sales_ledger} already exists.")
-
-    if not os.path.exists(events_path):
-        events_df = pd.DataFrame(columns = events_headers)
-        events_df.to_csv(events_path, index = False)
-        print(f"Sales Events file initialized as {events_path}.")
-
-    else:
-        print(f"{events_sales_ledger} already exists.")
-
-    if not os.path.exists(current_inventory_file):
-        master_df = pd.read_csv(master_table_path)
-        current_inv = initialize_current_inv_query(master_df,stock_lvl_path,stock_exceptions_path)
-
-        append_to_inv(inv_history_path,current_inv)
-        write_current_inv(current_inv)
-
-    else:
-        print(f"{current_inventory_file} already exists.")
-
-    if not os.path.exists(prod_ledger_path):
-        prod_df = pd.DataFrame(columns = prod_ledger_headers)
-        prod_df.to_csv(prod_ledger_path, index = False)
-        print(f"Sales Events file initialized as {prod_ledger_path}.")
-
-    else:
-        print(f"{eprod_ledger_path} already exists.")
+    initialize_outputs(args)
+    initialize_inventory_history(args)
+    initialize_ledgers(args)
 
 def save_salesevents (path, sales, events):
  
@@ -126,11 +109,11 @@ def write_new_inventory(inv_df: pd.DataFrame) -> pd.DataFrame:
 #    updated_inv.to_csv(inv_filename, index= False)
 #    print(f"Current inventory appended to: {inv_filename}. {rows} rows added.")
 
-def append_purch_ledger(ledger: pd.DataFrame,purch_to_process: pd.DataFrame):
-    updated_ledger = append_to_purch_ledger(purch_to_process,ledger)
-    purch_filename = purchases_ledger_file
-    updated_ledger.to_csv(purch_filename, index= False)
-    print(f"New data appended to: { purch_filename}. {len(updated_ledger)} rows added.")
+# def append_purch_ledger(ledger: pd.DataFrame,purch_to_process: pd.DataFrame):
+#    updated_ledger = append_to_purch_ledger(purch_to_process,ledger)
+#    purch_filename = purchases_ledger
+#    updated_ledger.to_csv(purch_filename, index= False)
+#    print(f"New data appended to: { purch_filename}. {len(updated_ledger)} rows added.")
 
 def append_to_prod_ledger(prod_ledger: str, prod_to_process: pd.DataFrame) -> pd.DataFrame:
     file_exists = os.path.exists(prod_ledger)
@@ -272,8 +255,7 @@ def production_processing(args):
         print("Appending missing sales data....")
         backdating_purchases(query_type,production_table,prod_hist_path)
     else:
-        print("Purchases Data up-to-date.")
-                 
+        print("Purchases Data up-to-date.")                
 
 def purchases_processing(args):
     print("Processing Purchases Data...")
@@ -317,7 +299,7 @@ def main():
     group = parser.add_mutually_exclusive_group(required = True)
 
     group.add_argument(
-        "-s",
+        "-sales",
         "--sales",
         nargs = "?",
         const = default_sales,
@@ -326,7 +308,7 @@ def main():
         help = "path to sales CSV file",
     )
     group.add_argument(
-        "-i",
+        "-inv",
         "--inventory",
         nargs = "?",
         const = default_inv,
@@ -335,7 +317,7 @@ def main():
         help = "Path to inventory CSV file",
     )
     group.add_argument(
-        "-pro",
+        "-prod",
         "--production",
         nargs = "?",
         const = prod_ledger_source,
@@ -344,7 +326,7 @@ def main():
         help = "Path to source production ledger CSV file",
     )
     group.add_argument(
-            "-pur",
+            "-purch",
             "--purchases",
             nargs = "?",
             const = purchases,
@@ -361,59 +343,104 @@ def main():
             metavar = "FILE",
             help = "Path to raw purchases ledger CSV file",
         )
+
     parser.add_argument(
-        "--prod_table",
-        default = prod_table,
+        "--master-item", 
+        type=str,
+        default = master_table_path,
         metavar = "FILE",
-        help = "Path to production/ Bill of materials table CSV file"
+        help = "Path to source master item table CSV file"
+    )
+    parser.add_argument(
+        "--stock-levels",
+        default = stock_levels_path,
+        metavar = "FILE",
+        help = "Path to source stock level table CSV file"
+    )
+    parser.add_argument(
+        "--stock-exceptions",
+        default = stock_exceptions_path,
+        metavar = "FILE",
+        help = "Path to source stock level exceptions table CSV file"
+    )
+    parser.add_argument(
+        "--inventory-path",
+        default = inv_path,
+        metavar = "FILE",
+        help = "Path to source hand count inventory table CSV file"
+    )
+    parser.add_argument(
+        "--purchases-source",
+        default = purchase_path,
+        metavar = "FILE",
+        help = "Path to source purchases ledger CSV file"
+    )
+    parser.add_argument(
+        "--production-path",
+        default = production_ledger_path,
+        metavar = "FILE",
+        help = "Path to source (unexpanded) production ledger CSV file"
+    )
+    parser.add_argument(
+        "--bill-of-mats",
+        default = bill_of_mats,
+        metavar = "FILE",
+        help = "Path to Bill of materials table CSV file"
+    )
+    parser.add_argument(
+        "--sales-source",
+        default = raw_sales_path,
+        metavar = "FILE",
+        help = "Path to source (pivoted) sales table CSV file"
     )
     parser.add_argument(
         "--current_inv",
-        default = current_inventory_file,
+        default = current_inventory_path,
         metavar = "FILE",
-        help = "Path to current inventory table CSV file"
+        help = "Path to output current inventory table CSV file"
     )
     parser.add_argument(
         "--inv_history",
-        default = transformed_inv_file,
+        default = inv_history_path,
         metavar = "FILE",
-        help = "Path to inventory history table CSV file"
+        help = "Path to output inventory history table CSV file"
     )
     parser.add_argument(
-        "--purch_ledger",
-        default = purchases_ledger,
+        "--expanded-production",
+        default = expanded_prod_ledger_path,
         metavar = "FILE",
-        help = "Path to most recently prepared purchases ledger table CSV file"
+        help = "Path to output production ledger CSV file"
     )
     parser.add_argument(
-        "--prod_ledger_processed",
-        default = prod_ledger,
+        "--sales-output",
+        default = events_sales_path,
         metavar = "FILE",
-        help = "Path to finished production ledger CSV file"
+        help = "Path to output sales ledger CSV file"
     )
     parser.add_argument(
-        "--master",
-        default = master_table_path,
+        "--events",
+        default = events_path,
         metavar = "FILE",
-        help = "Path to master item table CSV file"
+        help = "Path to output events ledger CSV file"
     )
     parser.add_argument(
-        "--stock_lvl",
-        default = stock_lvl_path,
+        "--purchases-output",
+        default = purch_ledger_path,
         metavar = "FILE",
-        help = "Path to stock level table CSV file"
+        help = "Path to output purchases ledger CSV file"
     )
     parser.add_argument(
-        "--stk_exceptions",
-        default = stock_exceptions_path,
+        "--master-table-output",
+        default = master_table_output,
         metavar = "FILE",
-        help = "Path to stock level exceptions table CSV file"
+        help = "Path to outputMaster Item Table CSV file"
     )
+
     args = parser.parse_args()
 
     if not args.initialize:
-        if not os.path.exists(transformed_inv_file):
-            print(f"Error: Required history file '{transformed_inv_file}' not found.")
+        if not os.path.exists(inv_history_path):
+            print(f"Error: Required history file '{inv_history_path}' not found.")
             print("Please run an initial inventory snapshot before processing sales.")
             # force the exit error so the engineer must touch <filename> or import data, depending on project state
             sys.exit(1)
@@ -425,8 +452,9 @@ def main():
         sales_processing(args)
 
     if args.inventory:
-        inv_history = pd.read_csv(transformed_inv_file)
-        inventory_processing(args, inv_history)
+        # changed from inv_history due to confusion with unified args;
+        inv_df = pd.read_csv(inv_path)
+        inventory_processing(args, inv_df)
 
     if args.production:
         production_processing(args)

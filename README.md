@@ -14,32 +14,28 @@
 python3 main.py [flag] (option:path) 
 
 ## Flags (mutually exclusive)
-- -ini : initialize the database (new setup)
-- -s : run sales
-- -i : set inventory
-- -pro: production
-- --table: production/Bill of Materials table
-- --ledger: production ledger
-- --current_inv: current inventory file
-- --inv_history: inventory ledger file
+- -ini      initialize the database (new setup)
+- -sales    run sales
+- -inv      set inventory
+- -prod     run production
+- -purch    run purchases
 
-## Default sourcefile Paths
--s "Inventory - FACT - Historical Sales.csv"
--i "Inventory - FACT - Inventory Snapshots.csv"
--pro "Inventory - FACT - Production Ledger.csv"
--pur "Inventory - FACT - Puchases.csv"
---table "Inventory - DIM - Production Table.csv"
---master "Inevntory - DIM-Master Item Table.csv"
---stock_lvl ""Inventory - DIM - Item Stock Level.csv"
---stk_exceptions Inventory - DIM - Stock Level Exceptions.csv"
---pro_ledger_processed "FACT - Production Ledger.csv"
---current_inv "DIM - Current Inventory.csv"
---inv_history "FACT - Inventory History.csv"
+## Optional Flags, Default Sourcefile Paths, and Descriptions
 
-## Outputs (Default File Names)
-- FACT - Event Sales.csv (from sales_filename when -s is used)
-- FACT - Events.csv (from sales_filename when -s is used)
-- FACT - Inventory History.csv (appended with current inventory, reduced by sales when -s or -i is used)
-- FACT - Purchases Ledger.csv (tracks purchases)
-- FACT - Production Ledger.csv (tracks production)
-- DIM - Current Inventory.csv (Written/Overwritten for all activities that affect current inventory count, including stock levels and production/purchase flags)
+### Source Files
+--master-table-path             "Inventory - DIM-Master Item Table.csv"             Source Master Item Table
+--stock-levels-path             "Inventory - DIM - Item Stock Level.csv"            Source Standard Item Stock Levels Table
+--stock-exceptions-path         "Inventory - DIM - Stock Level Exceptions.csv"      Source Exceptions to Standard Item Stock Level Table
+--inv-path                      "Inventory - FACT - Inventory Snapshots.csv"        Source Hand Counted Inventory Log (Pivotted)
+--purchase-path                 "Inventory - FACT - Purchases.csv"                  Source Purchases Ledger
+--production-ledger-path        "Inventory - FACT - Production Ledger.csv"          Source Production Ledger (unexpanded)
+--bill-of-mats                  "Inventory - DIM - Production Table.csv"            Source Bill of Materials used in Production (Pivotted)
+--raw-sales-path                "Inventory - FACT - Historical Sales.csv"           Source Event Sales (Pivotted)
+### Output Files
+--expanded-production           "FACT - Production Ledger.csv"                      Output Expanded Production Ledger
+--inv-history                   "FACT - Inventory History.csv"                      Output unpivotted Inventory history
+--purchases-output              "FACT - Purchases Ledger.csv"                       Output Purchases Ledger
+--sales-output                  "FACT - Event Sales.csv"                            Output Unpivoted Sales Data
+--events                        "FACT - Events.csv"                                 Output Event Data
+--current-inv                   "DIM - Current Inventory.csv"                       Output Current Inventory (Merged and Calculated)
+--master-table-output           "DIM-Master Item Table.csv"                         Output Master Item Table copy
