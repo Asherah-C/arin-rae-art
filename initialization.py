@@ -107,6 +107,11 @@ def pull_initial_data(args) -> pd.DataFrame:
     production_df = pd.read_csv(production_ledger_path)
     bill_of_mats_df = pd.read_csv(bill_of_mats)
 
+    #Set Date Format correctly
+    raw_sales_df["Date of Sales"]= pd.to_datetime(raw_sales_df["Date of Sales"], errors='coerce').dt.strftime("%Y-%m-%d")
+    inventories_df["Date of Inventory"]= pd.to_datetime(inventories_df["Date of Inventory"], errors='coerce').dt.strftime("%Y-%m-%d")
+    purchases_df["Date of Purchase"]= pd.to_datetime(purchases_df["Date of Purchase"], errors='coerce').dt.strftime("%Y-%m-%d")
+    production_df["Date of Production"]= pd.to_datetime(production_df["Date of Production"], errors='coerce').dt.strftime("%Y-%m-%d")
     # stock_lvl_df = pd.read_csv(stock_levels_path)
     #stk_exceptions_df = pd.read_csv(stock_exceptions_path)
 
@@ -253,6 +258,11 @@ def initialize_ledgers(args):
     production_df = pd.read_csv(production_ledger_path)
     bill_of_mats_df = pd.read_csv(bill_of_mats)
 
+    #Set Date Format correctly
+    raw_sales_df["Date of Sales"]= pd.to_datetime(raw_sales_df["Date of Sales"], errors='coerce').dt.strftime("%Y-%m-%d")
+    purchases_df["Date of Purchase"]= pd.to_datetime(purchases_df["Date of Purchase"], errors='coerce').dt.strftime("%Y-%m-%d")
+    production_df["Date of Production"]= pd.to_datetime(production_df["Date of Production"], errors='coerce').dt.strftime("%Y-%m-%d")
+
     #Step 4.2 Populaate Sales and Events Ledgers
     sales = transform_sales(raw_sales_df)
     events = transform_events(raw_sales_df)
@@ -269,5 +279,3 @@ def initialize_ledgers(args):
     production = transform_production(production_df)
     expanded = expand_production_df(bill_of_mats_df,production)
     backdating_purchases("Production",expanded,expanded_prod_ledger_path)
-
-    

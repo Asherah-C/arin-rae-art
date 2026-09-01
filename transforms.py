@@ -1,17 +1,16 @@
 import pandas as pd
 import duckdb
-import os
 
 def initialize_current_inv_query (master_df : pd.DataFrame, stock_lvl_path : str, stock_exceptions_path : str ) -> pd.DataFrame:
     master_table = master_df.copy()
-    stock_lvl_df = pd.read_csv(stock_lvl_path)
-    stock_exc_df = pd.read_csv(stock_exceptions_path)
+
 
     #Date 7/13/2026 is set arbitrarily based on manual data pull. Future iterations may desire a change, depending on initialization functions behavior. See initializations.initializw_inventory_history() for more info.
     query = """
     WITH master_inv AS (
     SELECT
-        '7/13/2026' AS "Date of Inventory",
+        '2026-07-13T00:00:01-07:00' AS Timestamp,
+        '2026-07-13' AS "Date of Inventory",
         'Initiziation' AS "Inventory Location",
         Key AS Item,
         Style,
@@ -26,7 +25,8 @@ def initialize_current_inv_query (master_df : pd.DataFrame, stock_lvl_path : str
     ),
     combined_print AS (
     SELECT
-        '7/1/2026' AS "Date of Inventory",
+        NULL AS Timestamp,
+        '2026-7-13' AS "Date of Inventory",
         'Initiziation' AS "Inventory Location",
         Style || '-SumP' AS Item,
         Style,
@@ -57,151 +57,6 @@ def initialize_current_inv_query (master_df : pd.DataFrame, stock_lvl_path : str
 
     return(full_ini_current_inv)
 
-def path_to_df(path :str):
-    datafile = pd.read_csv(path)
-
-    return datafile
-
-def exclude_columns(datafile:  pd.DataFrame):
-    query = """
-    SELECT * EXCLUDE (Timestamp) FROM datafile
-    """
-    return query
-
-def purch_transform(dataframe) -> pd.DataFrame:
-    query = """
-    SELECT 
-        "Date of Purchase",
-        "Invoice / Purchase Orders",
-        "Item",
-        "Quantity Bought",
-        "Price (each)",
-        "Subtotal"
-    FROM dataframe
-    ORDER BY "Date of Purchase"
-    """
-    ex_col = duckdb.query(query).df()
-    return ex_col
-
-def prod_transform(dataframe) -> pd.DataFrame:
-    query = """
-    SELECT 
-        "Date of Production",
-        "Item Made" AS "Item",
-        "Style",
-        "Subcategory",
-        "Qty Made" as "Qty Delta"
-    FROM dataframe
-    ORDER BY "Date of Production"
-    """
-    ex_col = duckdb.query(query).df()
-    return ex_col
-
-def unprocessed_table(query_type,dates_df:pd.DataFrame, raw_df: pd.DataFrame) ->pd.DataFrame:
-    if query_type == "purchases":
-        date_col = "Date of Purchase"
-    if query_type == "production":
-        date_col = "Date of Production"
-
-    query = f"""
-    SELECT r.*
-    FROM dates_df as d
-    LEFT JOIN raw_df as r
-        ON d.date = r."{date_col}"
-    """
-    purch_to_process = duckdb.query(query).df()
-    print(purch_to_process)
-
-    return purch_to_process
-
-def sales_transform(datafile:  pd.DataFrame,query) -> pd.DataFrame:
-    exc_col_query = duckdb.query(query).df()
-
-    unpivot = """
-        WITH unpivoted as (
-            FROM  exc_col_query
-            UNPIVOT INCLUDE NULLS (
-                qty_sold FOR Item IN (
-                    COLUMNS (* EXCLUDE(
-                        "Email Address",
-                        "Date of Sales",
-                        "Name of Event/ Venue", 
-                        "Total Sales($)",
-                        "(Total) Tabling and Additional Costs ($)", 
-                        "Event Notes (weather, etc)"
-                )))
-            )
-        )
-        SELECT 
-            "Date of Sales",
-            "Name of Event/ Venue" AS "Event Name",
-            Item,
-            -- If value is null, empty string, or non-numeric, default to 0
-            COALESCE(TRY_CAST(qty_sold AS DOUBLE), 0) AS "Qty Sold"
-        FROM unpivoted
-        ORDER BY "Date of Sales", Item
-    """
-    return duckdb.query(unpivot).df()
-
-def inv_transform(datafile: pd.DataFrame,query) -> pd.DataFrame:
-    exc_col_query = duckdb.query(query).df()
-
-    unpivot = """
-        WITH unpivoted as (
-            FROM  exc_col_query
-            UNPIVOT INCLUDE NULLS (
-                stock_qty FOR Item IN (
-                    COLUMNS (* EXCLUDE(
-                    "Date of Inventory",
-                    "Inventory Location",
-                    "Notes"
-                )))
-            )
-        )
-    -- Step 3: Select metadata + item_key, converting missing values to 0
-        SELECT 
-            "Date of Inventory",
-            "Inventory Location",
-            Item,
-            COALESCE(TRY_CAST(stock_qty AS DOUBLE), 0) AS "Qty in Stock"
-        FROM unpivoted
-        ORDER BY "Date of Inventory", Item
-    """
-
-    return duckdb.query(unpivot).df()
-
-# def inv_transform(datafile,query):
-#   exc_col_query = duckdb.query(query).df()
-
-#   unpivot = """
-#        WITH unpivoted as (
-#            FROM  exc_col_query
-#            UNPIVOT INCLUDE NULLS (
-#                stock_qty FOR item_key IN (
-#                    COLUMNS (* EXCLUDE(
-#                    "Date of Inventory",
-#                    "Inventory Location",
-#                    "Notes"
-#                )))
-#            )
-#        )
-#        PIVOT unpivoted
-#        ON "Date of Inventory"
-#        USING COALESCE(SUM(stock_qty),0)
-#        GROUP BY item_key
-#        ORDER BY item_key 
-#    """
-
-#    return duckdb.query(unpivot).df()
-
-def event_transform(datafile:  pd.DataFrame,query) ->  pd.DataFrame:
-    exc_col_query = duckdb.query(query).df()
-
-    event_query = """
-        SELECT "Date of Sales", "Name of Event/ Venue" AS "Event Name", "Total Sales($)","(Total) Tabling and Additional Costs ($)","Event Notes (weather, etc)" FROM datafile
-    """
-
-    return duckdb.query(event_query).df()
 
 def create_current_inv(sales_df: pd.DataFrame,inv_df: pd.DataFrame) ->pd.DataFrame:
     latest_inv_date = pd.to_datetime(inv_df["Date of Inventory"]).max()
@@ -222,10 +77,11 @@ def create_current_inv(sales_df: pd.DataFrame,inv_df: pd.DataFrame) ->pd.DataFra
     merged_inv["Qty in Stock"] = merged_inv["Qty in Stock"] - merged_inv["Qty Sold"]
     merged_inv = merged_inv.drop(columns=["Qty Sold"])
 
-    merged_inv["Date of Inventory"] = sales_df_temp["Date_dt"].max().strftime("%m/%d/%Y")
+    merged_inv["Date of Inventory"] = sales_df_temp["Date_dt"].max().strftime("%Y-%m-%d")
     merged_inv["Inventory Location"] = "Calculated"
 
     return merged_inv[[
+            "Timestamp",
             "Date of Inventory",
             "Inventory Location",
             "Item",
@@ -239,6 +95,7 @@ def create_current_from_inv(inv_df: pd.DataFrame,) -> pd.DataFrame:
     last_inv = inv_df_temp[inv_df_temp["Date_dt"] == latest_inv_date].drop(columns=["Date_dt"])
 
     return last_inv [[
+        "Timestamp",
         "Date of Inventory",
         "Inventory Location",
         "Item",
@@ -250,6 +107,7 @@ def append_to_inv(hist_path: pd.DataFrame,current_inv: pd.DataFrame):
 
     query ="""
     SELECT
+        Timestamp,
         "Date of Inventory",
         "Inventory Location",
         Item,
@@ -282,9 +140,9 @@ def backdating_inventory (dates_df: pd.DataFrame, raw_df: pd.DataFrame, hist_pat
 def backdating_sales_events (table_type,dates_df: pd.DataFrame, raw_df: pd.DataFrame, hist_path:str):
     order_clause = str
     if table_type == "Sales":
-        order_clause = "ORDER BY strptime(r.\"Date of Sales\", \'%m/%d/%Y\') ASC, r.Item ASC"
+        order_clause = "ORDER BY r.\"Date of Sales\" ASC, r.Item ASC"
     if table_type == "Events":
-        order_clause = "ORDER BY strptime(r.\"Date of Sales\", \'%m/%d/%Y\') ASC, r.\"Event Name\" ASC"
+        order_clause = "ORDER BY r.\"Date of Sales\" ASC, r.\"Event Name\" ASC"
 
     #changed d.date to d."Date of Sales"; if something fails here we need to add clauses; (changed due to initialize_ledgers call)
     query = f"""
@@ -315,6 +173,7 @@ def current_inv_enrichment(current_df: pd.DataFrame, master_table_path: str) ->p
     enriched_query = """
     WITH enriched_inv as (
     SELECT
+        c.Timestamp,
         c."Date of Inventory",
         c."Inventory Location",
         c.Item,
@@ -330,6 +189,7 @@ def current_inv_enrichment(current_df: pd.DataFrame, master_table_path: str) ->p
     ) 
     , combined_print as(
         SELECT
+            MAX(Timestamp) AS Timestamp,
             MAX("Date of Inventory") AS "Date of Inventory",
             'Calculated' AS "Inventory Location",
             Style || '-SumP' AS Item,
@@ -361,7 +221,8 @@ def production_query(current_inv_enriched: pd.DataFrame,stock_lvl_path: str, sto
     
     production_query = """
     WITH prod_update AS(
-    SELECT 
+    SELECT
+        e.Timestamp, 
         e."Date of Inventory",
         e."Inventory Location",
         e.Item,
@@ -389,7 +250,8 @@ def production_query(current_inv_enriched: pd.DataFrame,stock_lvl_path: str, sto
             OR e."Input Product" = TRUE
     ORDER BY e.Item
     )
-    SELECT 
+    SELECT
+        c.Timestamp, 
         c."Date of Inventory",
         c."Inventory Location",
         c.Item,
@@ -436,6 +298,7 @@ def purchase_query(production_query: pd.DataFrame) ->pd.DataFrame:
         )
     
     SELECT
+        p.Timestamp,
         p."Date of Inventory",
         p."Inventory Location",
         p.Item,
@@ -460,7 +323,7 @@ def purchase_query(production_query: pd.DataFrame) ->pd.DataFrame:
         WHEN p.SubCategory = 'Print'
         THEN d."Add to Production Queue" = TRUE AND (p."Qty in Stock" - p."Stock Level") < d."Inventory Shortfall"
         WHEN p.Subcategory = 'CStock'
-        THEN d."Add to Production Queue" = TRUE AND (p."Qty in Stock" - p."Stock Level") < d."Inventory Shortfall"
+        THEN c."Add to Production Queue" = TRUE AND (p."Qty in Stock" - p."Stock Level") < c."Inventory Shortfall"
         WHEN p.Category = 'Supplies'
         THEN "Qty in Stock" < "Stock Level"
         WHEN p.Category = 'Sticker'
@@ -508,7 +371,7 @@ def transform_sales(datafile:  pd.DataFrame) -> pd.DataFrame:
             -- If value is null, empty string, or non-numeric, default to 0
             COALESCE(TRY_CAST(qty_sold AS DOUBLE), 0) AS "Qty Sold"
         FROM unpivoted
-        ORDER BY strptime("Date of Sales", '%m/%d/%Y'), Item
+        ORDER BY "Date of Sales", Item
     """
 
     sales = duckdb.query(unpivot).df()
@@ -537,7 +400,7 @@ def transform_inv(datafile: pd.DataFrame) -> pd.DataFrame:
             Item,
             COALESCE(TRY_CAST(stock_qty AS DOUBLE), 0) AS "Qty in Stock"
         FROM unpivoted
-        ORDER BY strptime("Date of Inventory", '%m/%d/%Y'), Item
+        ORDER BY "Date of Inventory", Item
     """
 
     return duckdb.query(unpivot).df()
@@ -553,7 +416,7 @@ def transform_purchase(dataframe) -> pd.DataFrame:
         "Price (each)",
         "Subtotal"
     FROM dataframe
-    ORDER BY strptime("Date of Purchase", '%m/%d/%Y') ASC
+    ORDER BY "Date of Purchase" ASC
     """
     ex_col = duckdb.query(query).df()
     return ex_col
@@ -568,7 +431,7 @@ def transform_production(dataframe) -> pd.DataFrame:
         "Subcategory",
         "Qty Made" as "Qty Delta"
     FROM dataframe
-    ORDER BY strptime("Date of Production", '%m/%d/%Y') ASC
+    ORDER BY "Date of Production" ASC
     """
     ex_col = duckdb.query(query).df()
     return ex_col
@@ -583,7 +446,7 @@ def transform_events(datafile:  pd.DataFrame) ->  pd.DataFrame:
             "(Total) Tabling and Additional Costs ($)",
             "Event Notes (weather, etc)"
         FROM datafile
-        ORDER by strptime("Date of Sales", '%m/%d/%Y') ASC
+        ORDER by "Date of Sales" ASC
     """
 
     return duckdb.query(event_query).df()

@@ -1,6 +1,5 @@
 import pandas as pd
 import duckdb
-import sys
 
 
 def prod_table_ref(path:str) -> pd.DataFrame:
@@ -108,6 +107,7 @@ def update_current_from_prod(prod_df: pd.DataFrame,current_df: pd.DataFrame) ->p
     merged_inv["Inventory Location"] = "Calculated"
 
     return merged_inv[[
+            "Timestamp",
             "Date of Inventory",
             "Inventory Location",
             "Item",
@@ -153,6 +153,7 @@ def calc_current_from_purch(purch:pd.DataFrame, curr_inv:pd.DataFrame) -> pd.Dat
     merged_inv["Inventory Location"] = "Calculated"
 
     return merged_inv[[
+        "Timestamp",
         "Date of Inventory",
         "Inventory Location",
         "Item",
@@ -160,16 +161,16 @@ def calc_current_from_purch(purch:pd.DataFrame, curr_inv:pd.DataFrame) -> pd.Dat
     ]]
 
 #Pulls unique dates from a date column, based on the correct ledger type
-def unique_dates(ledger_type:str, dataframe: pd.DataFrame) ->pd.data_frame:
+def unique_dates(ledger_type:str, dataframe: pd.DataFrame) ->pd.DataFrame:
     if ledger_type == "Sales":
         date_col = "Date of Sales"
     elif ledger_type == "Inventory":
         date_col = "Date of Inventory"
-    elif ledger_type == "Purchases":
+    elif ledger_type == "Purchase":
         date_col = "Date of Purchase"
     elif ledger_type == "Production":
         date_col = "Date of Production"
-    elif ledger_type == "Initialization":
+    elif ledger_type == "Initialization" or "Processing":
         date_col = "Date"
     else:
         print("Unrecognized ledger_type: Returning None.")
@@ -180,7 +181,7 @@ def unique_dates(ledger_type:str, dataframe: pd.DataFrame) ->pd.data_frame:
     SELECT
         DISTINCT "{date_col}"
     FROM raw_data
-    ORDER BY strptime("{date_col}", '%m/%d/%Y') ASC
+    ORDER BY "{date_col}" ASC
     """
     dates_df = duckdb.query(dates_query).df()
 

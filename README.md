@@ -15,10 +15,7 @@ python3 main.py [flag] (option:path)
 
 ## Flags (mutually exclusive)
 - -ini      initialize the database (new setup)
-- -sales    run sales
-- -inv      set inventory
-- -prod     run production
-- -purch    run purchases
+- -proc     process additional ativities, after initialization
 
 ## Optional Flags, Default Sourcefile Paths, and Descriptions
 

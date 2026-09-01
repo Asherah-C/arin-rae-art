@@ -1,5 +1,3 @@
-import os
-import sys
 import pandas as pd
 import duckdb
 
@@ -118,7 +116,7 @@ def compare_dates (query_type: str, new_df: pd.DataFrame, history_df: pd.DataFra
     FROM raw_dates
     WHERE
         date NOT IN (SELECT date FROM hist_dates)
-    ORDER BY strptime(date, '%m/%d/%Y') ASC
+    ORDER BY strptime(date, '%Y%m-%d) ASC
 """
     dates = duckdb.query(query).df() 
 

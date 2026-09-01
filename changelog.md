@@ -59,7 +59,6 @@
 * No price or expenses data is ETLed at this time.
 * Move to Timestamps
 * Production adds all in ledger, not just applicable dates. It creates the dataset based on what needs to be added to the ledger and adds it to current inventory, including any dates that are captured by the latest handcount.
-* why inventory ledger has 8/21/2026 twice?
 * Change "Add to Purchase Order" logic to be IF AND "Add to Production Queue" for prints and cards, else FALSE, skip logic for inputs/supplies
 * Add cannibalism logic to Production
 
@@ -67,12 +66,24 @@
 
 ### ✨ New Features
 * Initialization feature now populates all ledgers (inventory, purchases, production, events, and sales) with historical information accurately by date and then creates a current inventory file.
+* Processing feature now handles all activities at once, with backdating and activity prioritization! (inventory, purchases, production, sales)
 * Timestamps now integrated (but not utilized yet, pending owner-level manual clean).
 * New Flags for all files (sources and outputs).
 
 ### Resolved Bugs
 * **Resolved "Add to Purchase Order" logic** by eliminating additional OR clause. Now, items will only be added to purchase order as needed to cover production queues.
+* **Resolved multiple bugs**  by implementing processing logic.
+- - ~~Need to recalculate/overwrite current inventory when a newer inventory that predates current inventory arrives. calc all purchases, production, and sales based on that newest inventory date, going forward.~~
+- - ~~Loading by activity will fail to maintain an accurate telling of events unless they are loaded in order, as they happen.~~
+- - ~~Production adds all in ledger, not just applicable dates. It creates the dataset based on what needs to be added to the ledger and adds it to current inventory, including any dates that are captured by the latest handcount.~~
+* **Timestamps integrated for future iterations.**
 
 ### Under the Hood
 * **Initialization.py** New file to handle the initialization of a new database fullly, loading all data chronologically and from all sources simultaneously. This initialization will become a large feature of rolling out a unifed data ETL process, built on timestamps and not merely dates.
+* **processing.py**
 * **Code Cleaning: Unification of args and flags** slowly bringing all code into a single standard, beginning with unified args references to help reduce confusion of coders to aid in troubleshooting.
+
+### Known Bugs and Issues
+* Needs a way to build-in spot check inventories (possible Power BI function over python?)
+* No price or expenses data is ETLed at this time.
+* Add cannibalism logic to Production
