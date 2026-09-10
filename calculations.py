@@ -149,7 +149,7 @@ def calc_current_from_purch(purch:pd.DataFrame, curr_inv:pd.DataFrame) -> pd.Dat
     merged_inv["Qty in Stock"] = merged_inv["Qty in Stock"].fillna(0)
     merged_inv["Qty in Stock"] = merged_inv["Qty in Stock"] + merged_inv["Quantity Bought"]
 
-    merged_inv["Date of Inventory"] = latest_purch_date.strftime("%m/%d/%Y")
+    merged_inv["Date of Inventory"] = latest_purch_date
     merged_inv["Inventory Location"] = "Calculated"
 
     return merged_inv[[

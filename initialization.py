@@ -263,19 +263,20 @@ def initialize_ledgers(args):
     purchases_df["Date of Purchase"]= pd.to_datetime(purchases_df["Date of Purchase"], errors='coerce').dt.strftime("%Y-%m-%d")
     production_df["Date of Production"]= pd.to_datetime(production_df["Date of Production"], errors='coerce').dt.strftime("%Y-%m-%d")
 
-    #Step 4.2 Populaate Sales and Events Ledgers
+
+    #4.2 Populate Purchases Ledger
+    purchases = transform_purchase(purchases_df)
+    backdating_purchases("Purchases",purchases,purch_ledger_path)
+
+    #4.3 Populate the expanded production ledger
+    production = transform_production(production_df)
+    expanded = expand_production_df(bill_of_mats_df,production)
+    backdating_purchases("Production",expanded,expanded_prod_ledger_path)
+
+    #Step 4.4 Populaate Sales and Events Ledgers
     sales = transform_sales(raw_sales_df)
     events = transform_events(raw_sales_df)
     dates_df = unique_dates("Sales", sales)
 
     backdating_sales_events("Sales",dates_df, sales, events_sales_path)
     backdating_sales_events("Events",dates_df, events, events_path)
-
-    #4.3 Populate Purchases Ledger
-    purchases = transform_purchase(purchases_df)
-    backdating_purchases("Purchases",purchases,purch_ledger_path)
-
-    #4.4 Populate the expanded production ledger
-    production = transform_production(production_df)
-    expanded = expand_production_df(bill_of_mats_df,production)
-    backdating_purchases("Production",expanded,expanded_prod_ledger_path)

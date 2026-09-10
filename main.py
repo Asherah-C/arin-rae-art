@@ -9,7 +9,7 @@ master_table_path = "Inventory - DIM-Master Item Table.csv"
 stock_levels_path = "Inventory - DIM - Item Stock Level.csv"
 stock_exceptions_path = "Inventory - DIM - Stock Level Exceptions.csv"
 inv_path = "Inventory - FACT - Inventory Snapshots.csv"
-purchase_path = "Inventory - FACT - Puchases.csv"
+purchase_path = "Inventory - FACT - Purchases.csv"
 production_ledger_path = "Inventory - FACT - Production Ledger.csv"
 bill_of_mats = "Inventory - DIM - Production Table.csv"
 raw_sales_path = "Inventory - FACT - Historical Sales.csv"
@@ -48,7 +48,8 @@ master_table_output = "DIM-Master Item Table.csv"
 def initialize_db(args):
     initialize_outputs(args)
     initialize_inventory_history(args)
-    initialize_ledgers(args)
+#    initialize_ledgers(args)
+    find_unprocessed_data(args)
 
 # Process New Data after initialization
 def run_processing(args):

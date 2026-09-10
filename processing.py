@@ -72,6 +72,8 @@ def find_unprocessed_data(args) -> list[pd.Timestamp, pd.Timestamp, dict]:
     missing_sales_df = raw_sales_df[~raw_sales_df["Date of Sales"].isin(events_sales_df["Date of Sales"])]
     missing_production_df = raw_prod_df[~raw_prod_df["Date of Production"].isin(expanded_production_df["Date of Production"])]
 
+    print("Missing Purchases Entries")
+    print(missing_purchases_df)
     print("Missing Production Entries")
     print(missing_production_df)
     print("Missing Sales Entries")
@@ -129,6 +131,7 @@ def find_unprocessed_data(args) -> list[pd.Timestamp, pd.Timestamp, dict]:
 
     if not activity_to_load_df.empty:
         populate_inventory_history(args, activity_to_load_df, backdated_data)
+        print("Testing to see if activity is empty. It is not.")
 
     if not all(df.empty for df in loaded_dict.values()):
         append_ledgers(args, loaded_dict)
@@ -201,7 +204,7 @@ def merge_raw_data_for_processing(args, loaded_dict: pd.DataFrame) -> pd.DataFra
         elif activity == "Purchase":
             prepped = transform_purchase(raw_df)
             prepped["Activity"] = "Purchase"
-            prepped = prepped.rename(columns={"Qty Bought":"Qty","Date of Purchase":"Date"})
+            prepped = prepped.rename(columns={"Quantity Bought":"Qty","Date of Purchase":"Date"})
             print(f"{len(prepped)} rows of {activity} Data prepared for load.")
 
     # Step 2.2d: transform Production Data
@@ -237,7 +240,7 @@ def populate_inventory_history(args, activity_ledger: pd.DataFrame, backdated_da
     all_dates = unique_dates("Processing",activity_ledger)
     all_dates["Date"] = pd.to_datetime(all_dates["Date"])
 
-    inventory_initialization_date = pd.to_datetime("2026-07-13")
+    inventory_initialization_date = pd.to_datetime("2025-08-31")
     valid_dates = all_dates[all_dates["Date"] > inventory_initialization_date]
     
     activity_ledger["Date"] = pd.to_datetime(activity_ledger["Date"])

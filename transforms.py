@@ -5,12 +5,12 @@ def initialize_current_inv_query (master_df : pd.DataFrame, stock_lvl_path : str
     master_table = master_df.copy()
 
 
-    #Date 7/13/2026 is set arbitrarily based on manual data pull. Future iterations may desire a change, depending on initialization functions behavior. See initializations.initializw_inventory_history() for more info.
+    #Date 08/31/2025 is set arbitrarily based on manual data pull. Future iterations may desire a change, depending on initialization functions behavior. See initializations.initializw_inventory_history() for more info.
     query = """
     WITH master_inv AS (
     SELECT
-        '2026-07-13T00:00:01-07:00' AS Timestamp,
-        '2026-07-13' AS "Date of Inventory",
+        '2025-08-31T00:00:01-07:00' AS Timestamp,
+        '2025-08-31' AS "Date of Inventory",
         'Initiziation' AS "Inventory Location",
         Key AS Item,
         Style,
@@ -26,7 +26,7 @@ def initialize_current_inv_query (master_df : pd.DataFrame, stock_lvl_path : str
     combined_print AS (
     SELECT
         NULL AS Timestamp,
-        '2026-7-13' AS "Date of Inventory",
+        '2025-08-31' AS "Date of Inventory",
         'Initiziation' AS "Inventory Location",
         Style || '-SumP' AS Item,
         Style,
