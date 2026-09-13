@@ -47,7 +47,7 @@ master_table_output = "DIM-Master Item Table.csv"
 # Database Initialization
 def initialize_db(args):
     initialize_outputs(args)
-    initialize_inventory_history(args)
+#    initialize_inventory_history(args)
 #    initialize_ledgers(args)
     find_unprocessed_data(args)
 

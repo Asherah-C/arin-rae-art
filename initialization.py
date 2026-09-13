@@ -21,7 +21,7 @@ def initialize_outputs(args):
 
     inv_ledger_headers = ["Timestamp","Date of Inventory","Inventory Location","Item","Qty in Stock"]
     purch_ledger_headers = ["Timestamp","Date of Purchase", "Invoice / Purchase Orders","Item","Quantity Bought","Price (each)","Subtotal"]
-    prod_ledger_headers = ["Timestamp","Date of Production", "Item", "Type", "Delta Qty"]
+    prod_ledger_headers = ["Timestamp","Date of Production", "Item", "Type", "Qty Delta"]
     sales_headers = ["Timestamp","Date of Sales","Event Name","Item","Qty Sold"]
     events_headers = ["Timestamp","Date of Sales","Event Name","Location (City)", "Total Sales($)","(Total) Tabling and Additional Costs ($)","Event Notes (weather, etc)"]
 
@@ -213,7 +213,11 @@ def initialize_inventory_history(args):
                     append_to_inv(inv_history_path,finished_curr)
                 elif activity == "Production":
                     activity_df = activity_df.rename(columns={"Qty":"Qty Delta","Date": "Date of Production"})
+                    print("Printing Production to load...")
+                    print(activity_df)
                     curr_inv = update_current_from_prod(activity_df,current_inventory)
+                    print("Printing  updated current inventory to load")
+                    print(curr_inv)
                     enriched = current_inv_enrichment(curr_inv, master_table_path)
                     prod  = production_query(enriched,stock_levels_path,stock_exceptions_path)
                     finished_curr = purchase_query(prod)

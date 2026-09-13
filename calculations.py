@@ -38,7 +38,7 @@ def current_inv_ref (path:str) -> tuple[pd.DataFrame,pd.Timestamp]:
 
     return current_inv_df, current_inv_date
 
-def calc_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataFrame) -> pd.DataFrame:
+# def calc_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataFrame) -> pd.DataFrame:
     new_ledger = unprocessed_df.copy()
     new_ledger["Qty Delta"] = pd.to_numeric(new_ledger["Qty Delta"], errors="coerce").fillna(0)
 
@@ -103,7 +103,7 @@ def update_current_from_prod(prod_df: pd.DataFrame,current_df: pd.DataFrame) ->p
     merged_inv["Qty in Stock"] = merged_inv["Qty in Stock"].fillna(0)
     merged_inv["Qty in Stock"] = merged_inv["Qty in Stock"] + merged_inv["Qty Delta"]
 
-    merged_inv["Date of Inventory"] = latest_prod_date.strftime("%m/%d/%Y")
+    merged_inv["Date of Inventory"] = latest_prod_date
     merged_inv["Inventory Location"] = "Calculated"
 
     return merged_inv[[
@@ -246,5 +246,6 @@ def expand_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataF
     aggregated_df = (
             production_delta_df.groupby(["Timestamp","Date of Production","Item","Type"], as_index=False)["Qty Delta"].sum()
         )
-
+    print("Expanded Production Activity:")
+    print(aggregated_df)
     return aggregated_df.sort_values(by=["Date of Production","Item"], ignore_index=True)

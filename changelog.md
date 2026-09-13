@@ -112,3 +112,15 @@ No new main features. Back end prep for Purchase /Production logic for cost anal
 * No price or expenses data is ETLed at this time.
 * Add cannibalism logic to Production
 * Add Joins of Production Tables
+
+# 1.2.3 Patch Notes
+
+
+### Resolved Bugs
+* Fixed a calculation error where initialization files were double calculated.
+
+### Known Bugs and Issues
+* Needs a way to build-in spot check inventories (possible Power BI function over python?)
+* No price or expenses data is ETLed at this time.
+* Add cannibalism logic to Production
+* Add Joins of Production Tables
