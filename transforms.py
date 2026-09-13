@@ -5,12 +5,12 @@ def initialize_current_inv_query (master_df : pd.DataFrame, stock_lvl_path : str
     master_table = master_df.copy()
 
 
-    #Date 08/31/2025 is set arbitrarily based on manual data pull. Future iterations may desire a change, depending on initialization functions behavior. See initializations.initializw_inventory_history() for more info.
+    #Date 12/31/2024 is set arbitrarily based on manual data pull. Future iterations may desire a change, depending on initialization functions behavior. See initializations.initializw_inventory_history() for more info.
     query = """
     WITH master_inv AS (
     SELECT
-        '2025-08-31T00:00:01-07:00' AS Timestamp,
-        '2025-08-31' AS "Date of Inventory",
+        '2024-12-31T23:59:59-07:00' AS Timestamp,
+        '2024-12-31' AS "Date of Inventory",
         'Initiziation' AS "Inventory Location",
         Key AS Item,
         Style,
@@ -26,7 +26,7 @@ def initialize_current_inv_query (master_df : pd.DataFrame, stock_lvl_path : str
     combined_print AS (
     SELECT
         NULL AS Timestamp,
-        '2025-08-31' AS "Date of Inventory",
+        '2024-12-31' AS "Date of Inventory",
         'Initiziation' AS "Inventory Location",
         Style || '-SumP' AS Item,
         Style,
@@ -356,7 +356,8 @@ def transform_sales(datafile:  pd.DataFrame) -> pd.DataFrame:
                         Timestamp,
                         "Email Address",
                         "Date of Sales",
-                        "Name of Event/ Venue", 
+                        "Name of Event/ Venue",
+                        "Location (City)", 
                         "Total Sales($)",
                         "(Total) Tabling and Additional Costs ($)", 
                         "Event Notes (weather, etc)"
@@ -442,6 +443,7 @@ def transform_events(datafile:  pd.DataFrame) ->  pd.DataFrame:
             Timestamp,
             "Date of Sales",
             "Name of Event/ Venue" AS "Event Name",
+            "Location (City)",
             "Total Sales($)",
             "(Total) Tabling and Additional Costs ($)",
             "Event Notes (weather, etc)"

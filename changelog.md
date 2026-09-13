@@ -87,3 +87,28 @@
 * Needs a way to build-in spot check inventories (possible Power BI function over python?)
 * No price or expenses data is ETLed at this time.
 * Add cannibalism logic to Production
+* Add Joins of Production Tables
+
+# 1.2.1 Release
+
+### ✨ New Features
+No new main features. Back end prep for Purchase /Production logic for cost analysis.
+
+### Known Bugs and Issues
+* Needs a way to build-in spot check inventories (possible Power BI function over python?)
+* No price or expenses data is ETLed at this time.
+* Add cannibalism logic to Production
+* Add Joins of Production Tables
+
+# 1.2.2 Patch Notes
+
+
+### Resolved Bugs
+* Fixed a pair of errors that caused purchases to not be parsed correctly. Reinitialization and running recommended.
+* Resolved an errror where the code was not expecting the new "Location (City)" Column from Historical sales.csv
+
+### Known Bugs and Issues
+* Needs a way to build-in spot check inventories (possible Power BI function over python?)
+* No price or expenses data is ETLed at this time.
+* Add cannibalism logic to Production
+* Add Joins of Production Tables

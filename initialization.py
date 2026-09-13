@@ -23,7 +23,7 @@ def initialize_outputs(args):
     purch_ledger_headers = ["Timestamp","Date of Purchase", "Invoice / Purchase Orders","Item","Quantity Bought","Price (each)","Subtotal"]
     prod_ledger_headers = ["Timestamp","Date of Production", "Item", "Type", "Delta Qty"]
     sales_headers = ["Timestamp","Date of Sales","Event Name","Item","Qty Sold"]
-    events_headers = ["Timestamp","Date of Sales","Event Name","Total Sales($)","(Total) Tabling and Additional Costs ($)","Event Notes (weather, etc)"]
+    events_headers = ["Timestamp","Date of Sales","Event Name","Location (City)", "Total Sales($)","(Total) Tabling and Additional Costs ($)","Event Notes (weather, etc)"]
 
     # Check for output files. If they do not exist, set them up, otherwise skip.
     # Do we want a sys.exit(0) here, since initialization will be writing data?
@@ -35,7 +35,6 @@ def initialize_outputs(args):
     else:
         print(f"{inv_history_path} already exists.")
         
-
     if not os.path.exists(purch_ledger_path):
         purch_df = pd.DataFrame(columns = purch_ledger_headers)
         purch_df.to_csv(purch_ledger_path, index = False)
@@ -43,6 +42,14 @@ def initialize_outputs(args):
 
     else:
         print(f"{purch_ledger_path} already exists.")
+
+    if not os.path.exists(expanded_prod_ledger_path):
+        prod_df = pd.DataFrame(columns = prod_ledger_headers)
+        prod_df.to_csv(expanded_prod_ledger_path, index = False)
+        print(f"Productioon file initialized as {expanded_prod_ledger_path}.")
+
+    else:
+        print(f"{expanded_prod_ledger_path} already exists.")
 
     if not os.path.exists(events_sales_path):
         sales_df = pd.DataFrame(columns = sales_headers)
@@ -76,21 +83,6 @@ def initialize_outputs(args):
     else:
         print(f"{current_inventory_path} already exists.")
 
-    if not os.path.exists(expanded_prod_ledger_path):
-        prod_df = pd.DataFrame(columns = prod_ledger_headers)
-        prod_df.to_csv(expanded_prod_ledger_path, index = False)
-        print(f"Sales Events file initialized as {expanded_prod_ledger_path}.")
-
-    else:
-        print(f"{expanded_prod_ledger_path} already exists.")
-
-    if not os.path.exists(expanded_prod_ledger_path):
-        prod_df = pd.DataFrame(columns = prod_ledger_headers)
-        prod_df.to_csv(expanded_prod_ledger_path, index = False)
-        print(f"Production ledger file initialized as {expanded_prod_ledger_path}.")
-
-    else:
-        print(f"{expanded_prod_ledger_path} already exists.")
 
 # Step 2 Pull dataframes of raw data, convert into single table to analyze
 def pull_initial_data(args) -> pd.DataFrame:
@@ -108,10 +100,10 @@ def pull_initial_data(args) -> pd.DataFrame:
     bill_of_mats_df = pd.read_csv(bill_of_mats)
 
     #Set Date Format correctly
-    raw_sales_df["Date of Sales"]= pd.to_datetime(raw_sales_df["Date of Sales"], errors='coerce').dt.strftime("%Y-%m-%d")
-    inventories_df["Date of Inventory"]= pd.to_datetime(inventories_df["Date of Inventory"], errors='coerce').dt.strftime("%Y-%m-%d")
-    purchases_df["Date of Purchase"]= pd.to_datetime(purchases_df["Date of Purchase"], errors='coerce').dt.strftime("%Y-%m-%d")
-    production_df["Date of Production"]= pd.to_datetime(production_df["Date of Production"], errors='coerce').dt.strftime("%Y-%m-%d")
+    raw_sales_df["Date of Sales"]= pd.to_datetime(raw_sales_df["Date of Sales"], errors='coerce')
+    inventories_df["Date of Inventory"]= pd.to_datetime(inventories_df["Date of Inventory"], errors='coerce')
+    purchases_df["Date of Purchase"]= pd.to_datetime(purchases_df["Date of Purchase"], errors='coerce')
+    production_df["Date of Production"]= pd.to_datetime(production_df["Date of Production"], errors='coerce')
     # stock_lvl_df = pd.read_csv(stock_levels_path)
     #stk_exceptions_df = pd.read_csv(stock_exceptions_path)
 
@@ -128,7 +120,8 @@ def pull_initial_data(args) -> pd.DataFrame:
     # Step 2.3: transform Purchases Data
     prepped_purch = transform_purchase(purchases_df)
     prepped_purch["Activity"] = "Purchases"
-    prepped_purch = prepped_purch.rename(columns={"Qty Bought":"Qty","Date of Purchase":"Date"})
+    prepped_purch = prepped_purch.rename(columns={"Quantity Bought":"Qty","Date of Purchase":"Date"})
+
 
     # Step 2.4: transform Production Data
     compressed_prod_df = transform_production(production_df)
@@ -141,7 +134,8 @@ def pull_initial_data(args) -> pd.DataFrame:
         [prepped_sales,prepped_inv,prepped_purch,expanded_prod_df],
         ignore_index=True
     )
-
+    print("Printing summary of all activities to parse...")
+    print(activity_df)
     return activity_df
 
 #Step 3: Run each Date through the Current Inventory and create a inventory log based on the activity type; this populates the inventory ledger for all data after the initialized current inventory date
@@ -171,12 +165,11 @@ def initialize_inventory_history(args):
         current_inventory["Date of Inventory"] = pd.to_datetime(current_inventory["Date of Inventory"])
         current_inv_date = pd.to_datetime(current_inventory["Date of Inventory"]).max()
 
-        print(unique_date,current_inv_date)
         #3.3.2 Check to see if the activity occurs before the current inventory date, we are looking for only activities after the initialization date.
         if unique_date <= current_inv_date:
             pass # skip dates before the current inventory date
+            
         else: # Pull the activity from the iterated date
-            print(f"Pulling data from{unique_date}")
             date_log_query="""
             SELECT
                 Timestamp,
@@ -196,6 +189,7 @@ def initialize_inventory_history(args):
 
             #3.3.2.b process each activity
             for activity in passes:
+                print(f"Parsing {activity} for {unique_date}.")
                 activity_df = date_log[date_log["Activity"] == activity].sort_values(by="Item")
                 activity_df["Inventory Location"] = "Calculated"
 

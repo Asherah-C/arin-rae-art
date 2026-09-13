@@ -72,13 +72,6 @@ def find_unprocessed_data(args) -> list[pd.Timestamp, pd.Timestamp, dict]:
     missing_sales_df = raw_sales_df[~raw_sales_df["Date of Sales"].isin(events_sales_df["Date of Sales"])]
     missing_production_df = raw_prod_df[~raw_prod_df["Date of Production"].isin(expanded_production_df["Date of Production"])]
 
-    print("Missing Purchases Entries")
-    print(missing_purchases_df)
-    print("Missing Production Entries")
-    print(missing_production_df)
-    print("Missing Sales Entries")
-    print(missing_sales_df)
-
     loaded_dict = {
         "Inventory": missing_inventories_df,
         "Purchase": missing_purchases_df,
@@ -88,7 +81,7 @@ def find_unprocessed_data(args) -> list[pd.Timestamp, pd.Timestamp, dict]:
 
     # 1.2b: Exits out if here is no new data
     if all(df.empty for df in loaded_dict.values()):
-            print("No new data. Sytem is up to date. Exiting.")
+            print("No new data. System is up to date. Exiting.")
             return
 
     dates = []
@@ -120,7 +113,7 @@ def find_unprocessed_data(args) -> list[pd.Timestamp, pd.Timestamp, dict]:
 
     else:
         # some data falls earlier than last run, so we need to rewrite inventory histry ledger for all activities on and after the earliest date
-        print("New discovery or have you been naughty? We've found backdated data. We're going to need to clean the existing data first.")
+        print("We've found backdated data. We're going to need to clean the existing data first.")
         drop_inventory_history_rows(args, inv_history_df,earliest_date_to_process)
         print("Beginning repopulation of inventory history.")
 
@@ -186,6 +179,7 @@ def merge_raw_data_for_processing(args, loaded_dict: pd.DataFrame) -> pd.DataFra
             print(f"No {activity} data to process. Skipping....")
             continue
 
+        print(f"Working on {activity} data...")
     # Step 2.2a: transform Sales Data
         if activity == "Sales":
             prepped= transform_sales(raw_df)
@@ -223,7 +217,8 @@ def merge_raw_data_for_processing(args, loaded_dict: pd.DataFrame) -> pd.DataFra
         activity_df = pd.DataFrame()
     else:
         activity_df = pd.concat(prepped_dfs, ignore_index=True)
-
+    print("Printing consolidated activity dataframe...")
+    print(activity_df)
     return activity_df
 
 # Run each Date through the Current Inventory and create a inventory log based on the activity type; this populates the inventory ledger for all data after the initialized current inventory date
@@ -240,7 +235,7 @@ def populate_inventory_history(args, activity_ledger: pd.DataFrame, backdated_da
     all_dates = unique_dates("Processing",activity_ledger)
     all_dates["Date"] = pd.to_datetime(all_dates["Date"])
 
-    inventory_initialization_date = pd.to_datetime("2025-08-31")
+    inventory_initialization_date = pd.to_datetime("2024-12-31")
     valid_dates = all_dates[all_dates["Date"] > inventory_initialization_date]
     
     activity_ledger["Date"] = pd.to_datetime(activity_ledger["Date"])
