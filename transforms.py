@@ -166,7 +166,7 @@ def backdating_purchases(query_type: str, purch_to_process: pd.DataFrame, hist_p
     print(f"{query_type} history updated with new data: {hist_path} updated with {rows} new rows.")
 
 
-# --- Enhancing Current Inventory for additional logistics 
+# --- Enhancing Current Inventory for additional logistics, always says calculated.....
 def current_inv_enrichment(current_df: pd.DataFrame, master_table_path: str) ->pd.DataFrame:
     master_df = pd.read_csv(master_table_path)
 

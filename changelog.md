@@ -124,3 +124,4 @@ No new main features. Back end prep for Purchase /Production logic for cost anal
 * No price or expenses data is ETLed at this time.
 * Add cannibalism logic to Production
 * Add Joins of Production Tables
+* Inventory Enrichment turns all activities into "Calculated"

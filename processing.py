@@ -114,7 +114,8 @@ def find_unprocessed_data(args) -> list[pd.Timestamp, pd.Timestamp, dict]:
     else:
         # some data falls earlier than last run, so we need to rewrite inventory histry ledger for all activities on and after the earliest date
         print("We've found backdated data. We're going to need to clean the existing data first.")
-        drop_inventory_history_rows(args, inv_history_df,earliest_date_to_process)
+        inventory_to_reset_current = drop_inventory_history_rows(args, inv_history_df,earliest_date_to_process)
+        set_backdated_current_inv(args, inventory_to_reset_current)
         print("Beginning repopulation of inventory history.")
 
         print(f"Pulling additional data from all activities on or after {earliest_date_to_process}.")
@@ -141,6 +142,28 @@ def drop_inventory_history_rows(args, inv_history_df: pd.DataFrame, earliest_dat
 
     print(f"Deleting {rows} from {inv_history_path} to update all records on and after {earliest_date}")
     inv_hist.to_csv(inv_history_path, index=False)
+
+    # Find latest date of the known good inventory history, pull all rows of that date
+    inv_hist["Date of Inventory"] = pd.to_datetime(inv_hist["Date of Inventory"])
+    inv_history_maxdate = inv_hist["Date of Inventory"].max()
+    to_backdate_current_inv_df = inv_hist[inv_hist["Date of Inventory"] == inv_history_maxdate]
+
+    return(to_backdate_current_inv_df)
+
+# Set the current inventory sheet to the back in time via pull of inventory history on last known good date
+def set_backdated_current_inv(args, inv_to_backdate: pd.DataFrame):
+    current_inventory_path = args.current_inv
+    master_table_path = args.master_item
+    stock_levels_path = args.stock_levels
+    stock_exceptions_path = args.stock_exceptions
+
+    print("Resetting current inventory to last known good inventory before backdate.")
+    enriched = current_inv_enrichment(inv_to_backdate, master_table_path)
+    prod  = production_query(enriched,stock_levels_path,stock_exceptions_path)
+    finished_curr = purchase_query(prod)
+    current_inventory = finished_curr
+    current_inventory.to_csv("testpulloutcurrent.csv", index=False)
+    current_inventory.to_csv(current_inventory_path, index= False)
     
 # Step 2.1 (optional, when earliest predates current inventory date) Pull additional rows from earliest date forward from raw data files
 def additional_activity_pull(raw_sales: pd.DataFrame, raw_prod: pd.DataFrame, raw_purch: pd.DataFrame, raw_hist:pd.DataFrame, loaded_dict: dict, earliest_date: pd.Timestamp) -> dict:
@@ -219,6 +242,7 @@ def merge_raw_data_for_processing(args, loaded_dict: pd.DataFrame) -> pd.DataFra
         activity_df = pd.concat(prepped_dfs, ignore_index=True)
     print("Printing consolidated activity dataframe...")
     print(activity_df)
+    activity_df.to_csv("activity_df.csv", index= False)
     return activity_df
 
 # Run each Date through the Current Inventory and create a inventory log based on the activity type; this populates the inventory ledger for all data after the initialized current inventory date
