@@ -115,7 +115,6 @@ No new main features. Back end prep for Purchase /Production logic for cost anal
 
 # 1.2.3 Patch Notes
 
-
 ### Resolved Bugs
 * Fixed a calculation error where initialization files were double calculated.
 
@@ -125,3 +124,25 @@ No new main features. Back end prep for Purchase /Production logic for cost anal
 * Add cannibalism logic to Production
 * Add Joins of Production Tables
 * Inventory Enrichment turns all activities into "Calculated"
+
+# 1.2.3-1 Commit to Main before Branch
+### Known Bugs and Issues
+* Needs a way to build-in spot check inventories (possible Power BI function over python?)
+* No price or expenses data is ETLed at this time.
+* Add cannibalism logic to Production
+* Add Joins of Production Tables
+* Inventory Enrichment turns all activities into "Calculated"
+
+# 2.0 Costs of Good Sold -WIP
+
+### New Features
+* Production Batching:
+- Derives individual cost of good produced by building each item individually from available inputs
+- Uses First-In, First-Out production accounting
+* Added new columns:
+-   Input Purchase Ledger Columns: Purchase_ID (autocalc)
+-   Ouput Purchase Ledger Columns: Purchase_ID, Status (Active or Exhausted)
+-   Outtput Production Ledger Columns: Batch_ID (autocalc by single qty item produced), Purchase_ID (for inputs only), Cost
+
+### Resolved Issues
+* Renamed flags for consistency

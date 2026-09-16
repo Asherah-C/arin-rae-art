@@ -16,11 +16,12 @@ raw_sales_path = "Inventory - FACT - Historical Sales.csv"
 
 expanded_prod_ledger_path = "FACT - Production Ledger.csv"  
 inv_history_path = "FACT - Inventory History.csv"
-purch_ledger_path = "FACT - Purchases Ledger.csv"
+purch_ledger_path = "DIM - Purchases Ledger.csv"
 events_sales_path = "FACT - Event Sales.csv"
 events_path = "FACT - Events.csv"
 current_inventory_path = "DIM - Current Inventory.csv"
 master_table_output = "DIM-Master Item Table.csv"
+raw_mats_ledger_path = "FACT - Raw Materials Ledger.csv"
 
 
 
@@ -32,6 +33,7 @@ master_table_output = "DIM-Master Item Table.csv"
 #    events_path = args.events
 #    current_inventory_path = args.current_inv
 #    master_table_output = args.master_table_output
+#    raw_mats_ledger_path = args.raw_mats_output
 #
 #    master_table_path = args.master_item
 #    stock_levels_path = args.stock_levels
@@ -71,42 +73,6 @@ def main():
         metavar = "FILE",
         help = "process all activities after initialization.",
     )
-#    group.add_argument(
-#        "-sales",
-#        "--sales",
-#        nargs = "?",
-#        const = default_sales,
-#        default = None,
-#        metavar = "FILE",
-#        help = "path to sales CSV file",
-#    )
-#    group.add_argument(
-#        "-inv",
-#        "--inventory",
-#        nargs = "?",
-#        const = default_inv,
-#        default = None,
-#        metavar = "FILE",
-#        help = "Path to inventory CSV file",
-#    )
-#    group.add_argument(
-#        "-prod",
-#        "--production",
-#        nargs = "?",
-#        const = prod_ledger_source,
-#        default = None,
-#        metavar = "FILE",
-#        help = "Path to source production ledger CSV file",
-#    )
-#    group.add_argument(
-#            "-purch",
-#            "--purchases",
-#            nargs = "?",
-#            const = purchases,
-#            default = None,
-#            metavar = "FILE",
-#            help = "Path to raw purchases ledger CSV file",
-#        )
     group.add_argument(
             "-ini",
             "--initialize",
@@ -167,13 +133,13 @@ def main():
         help = "Path to source (pivoted) sales table CSV file"
     )
     parser.add_argument(
-        "--current_inv",
+        "--current-inv",
         default = current_inventory_path,
         metavar = "FILE",
         help = "Path to output current inventory table CSV file"
     )
     parser.add_argument(
-        "--inv_history",
+        "--inv-history",
         default = inv_history_path,
         metavar = "FILE",
         help = "Path to output inventory history table CSV file"
@@ -206,7 +172,13 @@ def main():
         "--master-table-output",
         default = master_table_output,
         metavar = "FILE",
-        help = "Path to outputMaster Item Table CSV file"
+        help = "Path to output Master Item Table CSV file"
+    )
+    parser.add_argument(
+        "--raw-mats-output",
+        default = raw_mats_ledger_path,
+        metavar = "FILE",
+        help = "Path to output Raw Materials Ledger CSV file"
     )
 
     args = parser.parse_args()

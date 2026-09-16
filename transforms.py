@@ -162,9 +162,12 @@ def backdating_sales_events (table_type,dates_df: pd.DataFrame, raw_df: pd.DataF
     
 def backdating_purchases(query_type: str, purch_to_process: pd.DataFrame, hist_path:str):
     rows = len(purch_to_process)
+    if query_type == "Purchases":
+        purch_to_process["Status"] = "Active"
     purch_to_process.to_csv(hist_path, mode='a', header=False, index=False)
     print(f"{query_type} history updated with new data: {hist_path} updated with {rows} new rows.")
 
+    return purch_to_process
 
 # --- Enhancing Current Inventory for additional logistics, always says calculated.....
 def current_inv_enrichment(current_df: pd.DataFrame, master_table_path: str) ->pd.DataFrame:

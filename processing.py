@@ -12,6 +12,7 @@ from calculations import expand_production_df, calc_current_from_purch,update_cu
 #    events_path = args.events
 #    current_inventory_path = args.current_inv
 #    master_table_output = args.master_table_output
+#    raw_mats_ledger_path = args.raw_mats_output
 #
 #    master_table_path = args.master_item
 #    stock_levels_path = args.stock_levels
@@ -240,9 +241,6 @@ def merge_raw_data_for_processing(args, loaded_dict: pd.DataFrame) -> pd.DataFra
         activity_df = pd.DataFrame()
     else:
         activity_df = pd.concat(prepped_dfs, ignore_index=True)
-    print("Printing consolidated activity dataframe...")
-    print(activity_df)
-    activity_df.to_csv("activity_df.csv", index= False)
     return activity_df
 
 # Run each Date through the Current Inventory and create a inventory log based on the activity type; this populates the inventory ledger for all data after the initialized current inventory date
@@ -303,6 +301,7 @@ def populate_inventory_history(args, activity_ledger: pd.DataFrame, backdated_da
                 append_to_inv(inv_history_path,finished_curr)
             elif activity == "Purchase":
                 activity_df = activity_df.rename(columns={"Qty":"Quantity Bought","Date": "Date of Purchase"})
+                #new code line to populate purchases
                 curr_inv = calc_current_from_purch(activity_df,current_inventory)
                 enriched = current_inv_enrichment(curr_inv, master_table_path)
                 prod  = production_query(enriched,stock_levels_path,stock_exceptions_path)

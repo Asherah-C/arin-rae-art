@@ -20,8 +20,8 @@ def initialize_outputs(args):
 
 
     inv_ledger_headers = ["Timestamp","Date of Inventory","Inventory Location","Item","Qty in Stock"]
-    purch_ledger_headers = ["Timestamp","Date of Purchase", "Invoice / Purchase Orders","Item","Quantity Bought","Price (each)","Subtotal"]
-    prod_ledger_headers = ["Timestamp","Date of Production", "Item", "Type", "Qty Delta"]
+    purch_ledger_headers = ["Timestamp","Date of Purchase", "Purchase_ID", "Invoice / Purchase Orders","Item","Quantity Bought","Price (each)","Subtotal","Status"]
+    prod_ledger_headers = ["Batch_ID","Timestamp","Date of Production", "Item", "Purchase_ID", "Type", "Qty Delta", "Cost"]
     sales_headers = ["Timestamp","Date of Sales","Event Name","Item","Qty Sold"]
     events_headers = ["Timestamp","Date of Sales","Event Name","Location (City)", "Total Sales($)","(Total) Tabling and Additional Costs ($)","Event Notes (weather, etc)"]
 
