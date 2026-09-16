@@ -125,3 +125,16 @@ No new main features. Back end prep for Purchase /Production logic for cost anal
 * Add cannibalism logic to Production
 * Add Joins of Production Tables
 * Inventory Enrichment turns all activities into "Calculated"
+
+# 1.2.4 Hotfix
+
+
+### Resolved Bugs
+* Fixed a calculation error where sales and purchases were run on empty dataframe when a prior activity shared the same date
+
+### Known Bugs and Issues
+* Needs a way to build-in spot check inventories (possible Power BI function over python?)
+* No price or expenses data is ETLed at this time.
+* Add cannibalism logic to Production
+* Add Joins of Production Tables
+* Inventory Enrichment turns all activities into "Calculated"

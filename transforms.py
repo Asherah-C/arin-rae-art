@@ -64,7 +64,7 @@ def create_current_inv(sales_df: pd.DataFrame,inv_df: pd.DataFrame) ->pd.DataFra
     sales_df_temp = sales_df.copy()
     sales_df_temp["Date_dt"] = pd.to_datetime(sales_df_temp["Date of Sales"])
 
-    filtered_sales = sales_df_temp[sales_df_temp["Date_dt"] > latest_inv_date]
+    filtered_sales = sales_df_temp[sales_df_temp["Date_dt"] >= latest_inv_date]
 
     aggregated_sales = (filtered_sales.groupby("Item", as_index = False)["Qty Sold"].sum()) # a positive number
 

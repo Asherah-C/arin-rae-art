@@ -319,7 +319,7 @@ def populate_inventory_history(args, activity_ledger: pd.DataFrame, backdated_da
                 append_to_inv(inv_history_path,finished_curr)
             elif activity == "Sales":
                 activity_df = activity_df.rename(columns={"Qty":"Qty Sold","Date": "Date of Sales"})
-                curr_inv = create_current_inv (activity_df,current_inventory)
+                curr_inv = create_current_inv(activity_df,current_inventory)
                 enriched = current_inv_enrichment(curr_inv, master_table_path)
                 prod  = production_query(enriched,stock_levels_path,stock_exceptions_path)
                 finished_curr = purchase_query(prod)

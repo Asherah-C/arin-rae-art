@@ -138,7 +138,7 @@ def calc_current_from_purch(purch:pd.DataFrame, curr_inv:pd.DataFrame) -> pd.Dat
     purch_df = purch.copy()
     purch_df["Date_dt"] = pd.to_datetime(purch_df["Date of Purchase"])
     current_inv_date = pd.to_datetime(curr_inv["Date of Inventory"]).max()
-    unprocessed = purch_df[purch_df["Date_dt"] > current_inv_date].copy()
+    unprocessed = purch_df[purch_df["Date_dt"] >= current_inv_date].copy()
 
     latest_purch_date = unprocessed["Date_dt"].max()
     

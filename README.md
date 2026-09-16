@@ -3,12 +3,18 @@
 ## This package includes:
 - main.py
 - transforms.py
-- validations.py
+- calculations.py
+- processing.py
+- changelog.md
+- README.md
 
 ## This package requires:
 - Python 3+
 - Pandas
 - DuckDb
+
+## Execution Constraints: 
+1) The program requires that inventory be conducted at the beginning of a given day, otherwise, it will double-count the activities that day if they were performed before inventory in meatspace.
 
 ## Command Syntax
 python3 main.py [flag] (option:path) 
