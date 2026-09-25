@@ -133,16 +133,29 @@ No new main features. Back end prep for Purchase /Production logic for cost anal
 * Add Joins of Production Tables
 * Inventory Enrichment turns all activities into "Calculated"
 
-# 2.0 Costs of Good Sold -WIP
+# 2.0 Costs of Good Sold BETA
 
 ### New Features
+* Purchase Lot Enforcement:
+-   Assigns Purchase_ID to each item-qty purchased
+-   Tracks Active vs Exhausted lots to ensure First-In-First-Out accounting
 * Production Batching:
-- Derives individual cost of good produced by building each item individually from available inputs
-- Uses First-In, First-Out production accounting
+-   Derives individual cost of good produced by building each item individually from available inputs
+-   Uses First-In, First-Out production accounting
 * Added new columns:
 -   Input Purchase Ledger Columns: Purchase_ID (autocalc)
 -   Ouput Purchase Ledger Columns: Purchase_ID, Status (Active or Exhausted)
--   Outtput Production Ledger Columns: Batch_ID (autocalc by single qty item produced), Purchase_ID (for inputs only), Cost
+-   Output Production Ledger Columns: Batch_ID (autocalc by single qty item produced), Purchase_ID (for inputs only), Cost
+-   DIM - Current Inventory: added Purchase_ID, Batch_ID, and Cost columsn; cost of item (ea) per appropriate ID
+-   FACT - Event Sales.csv now assigns sales by Purchase or Batch ID (looks much more exploded);
+*  New Output Table!
+- DIM - Production Lots.csv tracks production batch log, cost per unit assembled and status.
+
+## Removed Features
+* To maintain consistent granularity of items across inventory, we removed the sumprint production logic, as well as purchase production logic. these will need to be implemented in a BI feature push to retain function for end-user.
+* Current Inventory no longer sums up total counts on item, but now on Purchase_ID or Batch_ID, whichever is appropriate. Full aggregation will need to be implemented in BI feature push to retain function of end-user.
+* Event Sales no longer aggreated on item; Full aggregation will need to be implemented in BI feature push to retain function of end-user.
 
 ### Resolved Issues
 * Renamed flags for consistency
+* Changed Inventory Location to Inventory Activity to avoid ambiguity and increase granualarity of data

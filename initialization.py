@@ -2,8 +2,30 @@ import pandas as pd
 import duckdb
 import os
 
-from transforms import initialize_current_inv_query, append_to_inv, transform_sales, transform_inv, transform_purchase, transform_production, create_current_from_inv, current_inv_enrichment, production_query,purchase_query, create_current_inv, backdating_sales_events, transform_events, backdating_purchases
+from transforms import initialize_current_inv_query, append_to_inv, transform_sales, transform_inv, transform_purchase, transform_production, create_current_from_inv, current_inv_enrichment, backdating_sales_events, transform_events, backdating_purchases
 from calculations import expand_production_df, calc_current_from_purch,update_current_from_prod, unique_dates
+
+### ----------- ARGS Quick Reference -----------
+#    expanded_prod_ledger_path = args.expanded_production 
+#    inv_history_path = args.inv_history
+#    purch_ledger_path = args.purchases_output
+#    events_sales_path = args.sales_output
+#    events_path = args.events
+#    current_inventory_path = args.current_inv
+#    master_table_output = args.master_table_output
+#    raw_mats_ledger_path = args.raw_mats_output
+#    production_lots_path = args.prod_lots_output
+#
+#    master_table_path = args.master_item
+#    stock_levels_path = args.stock_levels
+#    stock_exceptions_path = args.stock_exceptions
+#    inv_path = args.inventory_path
+#    purchase_path = args.purchases_source
+#    production_ledger_path = args.production_path
+#    bill_of_mats = args.bill_of_mats
+#    raw_sales_path = args.sales_source
+# ------------------------------------------------
+
 
 # Step 1: touch output files and set up columns
 def initialize_outputs(args):
@@ -17,13 +39,15 @@ def initialize_outputs(args):
     master_table_path = args.master_item
     stock_levels_path = args.stock_levels
     stock_exceptions_path = args.stock_exceptions
+    production_lots_path = args.prod_lots_output
 
 
-    inv_ledger_headers = ["Timestamp","Date of Inventory","Inventory Location","Item","Qty in Stock"]
-    purch_ledger_headers = ["Timestamp","Date of Purchase", "Purchase_ID", "Invoice / Purchase Orders","Item","Quantity Bought","Price (each)","Subtotal","Status"]
+    inv_ledger_headers = ["Timestamp","Date of Inventory","Inventory Activity","Item", "Purchase_ID", "Batch_ID", "Qty in Stock", "Cost"]
+    purch_ledger_headers = [ "Purchase_ID", "Timestamp","Date of Purchase", "Invoice / Purchase Orders","Item","Quantity Bought","Cost","Price (each)","Subtotal","Status"]
     prod_ledger_headers = ["Batch_ID","Timestamp","Date of Production", "Item", "Purchase_ID", "Type", "Qty Delta", "Cost"]
-    sales_headers = ["Timestamp","Date of Sales","Event Name","Item","Qty Sold"]
+    sales_headers = ["Timestamp","Date of Sales","Event Name","Item","Qty Sold", "Cost (ea)","Purchase_ID", "Batch_ID"]
     events_headers = ["Timestamp","Date of Sales","Event Name","Location (City)", "Total Sales($)","(Total) Tabling and Additional Costs ($)","Event Notes (weather, etc)"]
+    production_lots_headers = ["Timestamp","Date of Production","Batch_ID","Item","Qty","Cost", "Status"]
 
     # Check for output files. If they do not exist, set them up, otherwise skip.
     # Do we want a sys.exit(0) here, since initialization will be writing data?
@@ -82,6 +106,14 @@ def initialize_outputs(args):
 
     else:
         print(f"{current_inventory_path} already exists.")
+
+    if not os.path.exists(production_lots_path):
+        prod_lots_df = pd.DataFrame(columns = production_lots_headers)
+        prod_lots_df.to_csv(production_lots_path, index = False)
+        print(f"Productioon file initialized as {production_lots_path}.")
+
+    else:
+        print(f"{production_lots_path} already exists.")
 
 
 # Step 2 Pull dataframes of raw data, convert into single table to analyze
@@ -191,7 +223,7 @@ def initialize_inventory_history(args):
             for activity in passes:
                 print(f"Parsing {activity} for {unique_date}.")
                 activity_df = date_log[date_log["Activity"] == activity].sort_values(by="Item")
-                activity_df["Inventory Location"] = "Calculated"
+                activity_df["Inventory Activity"] = activity
 
                 # Based on each activity, execute relevant functions
                 if activity == "Inventory":
@@ -199,18 +231,18 @@ def initialize_inventory_history(args):
                     activity_df["Inventory Location"] = "Hand Count"
                     curr_inv = create_current_from_inv (activity_df)
                     enriched = current_inv_enrichment(curr_inv, master_table_path)
-                    prod  = production_query(enriched,stock_levels_path,stock_exceptions_path)
-                    finished_curr = purchase_query(prod)
-                    current_inventory = finished_curr
-                    append_to_inv(inv_history_path,finished_curr)
+                    # prod  = production_query(enriched,stock_levels_path,stock_exceptions_path)
+                    # finished_curr = purchase_query(prod)
+                    # current_inventory = finished_curr
+                    append_to_inv(inv_history_path,enriched)
                 elif activity == "Purchases":
                     activity_df = activity_df.rename(columns={"Qty":"Quantity Bought","Date": "Date of Purchase"})
                     curr_inv = calc_current_from_purch(activity_df,current_inventory)
                     enriched = current_inv_enrichment(curr_inv, master_table_path)
-                    prod  = production_query(enriched,stock_levels_path,stock_exceptions_path)
-                    finished_curr = purchase_query(prod)
-                    current_inventory = finished_curr
-                    append_to_inv(inv_history_path,finished_curr)
+                    #prod  = production_query(enriched,stock_levels_path,stock_exceptions_path)
+                    #finished_curr = purchase_query(prod)
+                    #current_inventory = finished_curr
+                    append_to_inv(inv_history_path,enriched)
                 elif activity == "Production":
                     activity_df = activity_df.rename(columns={"Qty":"Qty Delta","Date": "Date of Production"})
                     print("Printing Production to load...")
@@ -219,18 +251,18 @@ def initialize_inventory_history(args):
                     print("Printing  updated current inventory to load")
                     print(curr_inv)
                     enriched = current_inv_enrichment(curr_inv, master_table_path)
-                    prod  = production_query(enriched,stock_levels_path,stock_exceptions_path)
-                    finished_curr = purchase_query(prod)
-                    current_inventory = finished_curr
-                    append_to_inv(inv_history_path,finished_curr)
+                    #prod  = production_query(enriched,stock_levels_path,stock_exceptions_path)
+                    #finished_curr = purchase_query(prod)
+                    #current_inventory = finished_curr
+                    append_to_inv(inv_history_path,enriched)
                 elif activity == "Sales":
                     activity_df = activity_df.rename(columns={"Qty":"Qty Sold","Date": "Date of Sales"})
                     curr_inv = create_current_inv (activity_df,current_inventory)
                     enriched = current_inv_enrichment(curr_inv, master_table_path)
-                    prod  = production_query(enriched,stock_levels_path,stock_exceptions_path)
-                    finished_curr = purchase_query(prod)
-                    current_inventory = finished_curr
-                    append_to_inv(inv_history_path,finished_curr)
+                    # prod  = production_query(enriched,stock_levels_path,stock_exceptions_path)
+                    # finished_curr = purchase_query(prod)
+                    # current_inventory = finished_curr
+                    append_to_inv(inv_history_path,enriched)
                 else:
                     print(f"{activity} Not Recognized. Skipping....")
 

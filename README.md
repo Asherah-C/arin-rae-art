@@ -3,12 +3,19 @@
 ## This package includes:
 - main.py
 - transforms.py
-- validations.py
+- calculations.py
+- initalization.py
+- processing.py
+- changelog.md
+- README.md
 
 ## This package requires:
 - Python 3+
 - Pandas
 - DuckDb
+
+## Execution Constraints: 
+1) The program requires that inventory be conducted at the beginning of a given day, otherwise, it will double-count the activities that day if they were performed before inventory in meatspace.
 
 ## Command Syntax
 python3 main.py [flag] (option:path) 
@@ -36,3 +43,4 @@ python3 main.py [flag] (option:path)
 --events                        "FACT - Events.csv"                                 Output Event Data
 --current-inv                   "DIM - Current Inventory.csv"                       Output Current Inventory (Merged and Calculated)
 --master-table-output           "DIM-Master Item Table.csv"                         Output Master Item Table copy
+--production-lots               "DIM - Production Lots.csv"                         Output Table of Production Lots and Status

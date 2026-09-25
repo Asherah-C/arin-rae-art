@@ -20,9 +20,9 @@ purch_ledger_path = "DIM - Purchases Ledger.csv"
 events_sales_path = "FACT - Event Sales.csv"
 events_path = "FACT - Events.csv"
 current_inventory_path = "DIM - Current Inventory.csv"
-master_table_output = "DIM-Master Item Table.csv"
+master_table_output = "DIM - Master Item Table.csv"
 raw_mats_ledger_path = "FACT - Raw Materials Ledger.csv"
-
+production_lots_path = "DIM - Production Lots.csv"
 
 
 ### ----------- ARGS Quick Reference -----------
@@ -34,6 +34,7 @@ raw_mats_ledger_path = "FACT - Raw Materials Ledger.csv"
 #    current_inventory_path = args.current_inv
 #    master_table_output = args.master_table_output
 #    raw_mats_ledger_path = args.raw_mats_output
+#    production_lots_path = args.prod_lots_output
 #
 #    master_table_path = args.master_item
 #    stock_levels_path = args.stock_levels
@@ -179,6 +180,12 @@ def main():
         default = raw_mats_ledger_path,
         metavar = "FILE",
         help = "Path to output Raw Materials Ledger CSV file"
+    )
+    parser.add_argument(
+        "--prod-lots-output",
+        default = production_lots_path,
+        metavar = "FILE",
+        help = "Path to output of Production Batch ID lots Ledger CSV file"
     )
 
     args = parser.parse_args()
