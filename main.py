@@ -1,7 +1,7 @@
 import os
 import sys
 import argparse
-from initialization import initialize_outputs, initialize_inventory_history, initialize_ledgers
+from initialization import initialize_outputs
 from processing import find_unprocessed_data
 
 # Unified Path Variables
@@ -21,8 +21,8 @@ events_sales_path = "FACT - Event Sales.csv"
 events_path = "FACT - Events.csv"
 current_inventory_path = "DIM - Current Inventory.csv"
 master_table_output = "DIM - Master Item Table.csv"
-raw_mats_ledger_path = "FACT - Raw Materials Ledger.csv"
 production_lots_path = "DIM - Production Lots.csv"
+image_dir = "Imaged Data"
 
 
 ### ----------- ARGS Quick Reference -----------
@@ -33,7 +33,6 @@ production_lots_path = "DIM - Production Lots.csv"
 #    events_path = args.events
 #    current_inventory_path = args.current_inv
 #    master_table_output = args.master_table_output
-#    raw_mats_ledger_path = args.raw_mats_output
 #    production_lots_path = args.prod_lots_output
 #
 #    master_table_path = args.master_item
@@ -44,6 +43,7 @@ production_lots_path = "DIM - Production Lots.csv"
 #    production_ledger_path = args.production_path
 #    bill_of_mats = args.bill_of_mats
 #    raw_sales_path = args.sales_source
+#    image_dir = args.image_dir
 # ------------------------------------------------
 
 
@@ -176,16 +176,17 @@ def main():
         help = "Path to output Master Item Table CSV file"
     )
     parser.add_argument(
-        "--raw-mats-output",
-        default = raw_mats_ledger_path,
-        metavar = "FILE",
-        help = "Path to output Raw Materials Ledger CSV file"
-    )
-    parser.add_argument(
         "--prod-lots-output",
         default = production_lots_path,
         metavar = "FILE",
         help = "Path to output of Production Batch ID lots Ledger CSV file"
+    )
+    parser.add_argument(
+        "--image-dir", 
+        type=str,
+        default = image_dir,
+        metavar = "DIR",
+        help = "Directory path for zip files (images of runs)"
     )
 
     args = parser.parse_args()

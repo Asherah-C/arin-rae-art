@@ -159,3 +159,39 @@ No new main features. Back end prep for Purchase /Production logic for cost anal
 ### Resolved Issues
 * Renamed flags for consistency
 * Changed Inventory Location to Inventory Activity to avoid ambiguity and increase granualarity of data
+
+# 2.0.1 Costs of Good Sold BETA - Hotfix
+### Resolved Issues
+* FACT - Event Sales.csv was missing Subcategory Column
+
+# 2.0.2 Costs of Good Sold BETA - Patch
+### Additional Features
+* Inventory History Run Tracking
+-   Run_ID column in inventory_history.csv to differentiate exact snapshots for backdating activity and provide clear date-captured snapshot, where the snapshot date = max(Date of Inventory) for each Run_ID
+
+* !!! IMAGED DATA !!!
+- The program now successfully zips all output files together upon successful completion of a data ETL process.
+- Files saved as "{Date of Activity} | {Activity}.zip" within a directory called "Imaged Data by default."
+- Default directory can be renamed using args flag --image-dir.
+
+* By-Activity Processing
+- The program now processes new activities one at a time by date first, and activity priority (still inventory, purchase, production, sales) individually.
+- This increases granularity of data output, in case backdated data is later discovered, as well as ensures more accurate backups.
+
+### Resolved Issues
+* Removed an errroneous args flag (raw-mats-ledger).
+
+### Under the Hood
+* Eliminated several functions through streamlining, many of which caused errors in
+* Removed validations.py from program. No longer used.
+
+### Known Bugs and Issues
+* Needs a way to build-in spot check inventories (possible Power BI function over python?)
+* No price data is ETLed at this time. Slated for future feature release.
+* Add cannibalism logic to Production
+* Add Joins of Production Tables
+
+### Dev Log
+* 10/9/2026:    To Do - Upstream cast column types on pd.read_csv()
+* 10/21/2026:   Consider production, (stock qty), Master Item Table tables in .zip file?
+-               Inventory largely untested. Will wish to see how it iteracts with program.             

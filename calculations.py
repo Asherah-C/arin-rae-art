@@ -1,6 +1,6 @@
 import pandas as pd
 import duckdb
-from transforms import backdating_purchases
+#from transforms import backdating_purchases
 
 def prod_table_ref(path:str) -> pd.DataFrame:
     prod_table_df = pd.read_csv(path)
@@ -57,13 +57,13 @@ def update_current_from_prod(prod_df: pd.DataFrame,current_df: pd.DataFrame) ->p
     #Set Timestamp Column to max of original data and fill in any activity blanks with Production
     prod_summed_df["Timestamp"] = prod_df_temp["Timestamp"].max()
     prod_summed_df["Inventory Activity"] = prod_summed_df["Inventory Activity"].fillna("Production")
-    prod_summed_df["Purchase_ID"] = prod_summed_df["Purchase_ID"].astype(object).fillna("")
-    prod_summed_df["Batch_ID"] = prod_summed_df["Batch_ID"].astype(object).fillna("")
+    prod_summed_df["Purchase_ID"] = pd.to_numeric(prod_summed_df["Purchase_ID"], errors='coerce').astype('Int64')
+    prod_summed_df["Batch_ID"] = pd.to_numeric(prod_summed_df["Batch_ID"], errors='coerce').astype('Int64')
 
 
     #fill current inventory NAs for merge
-    current_df_temp["Purchase_ID"] = current_df_temp["Purchase_ID"].astype(object).fillna("")
-    current_df_temp["Batch_ID"] = current_df_temp["Batch_ID"].astype(object).fillna("")
+    current_df_temp["Purchase_ID"] = pd.to_numeric(current_df_temp["Purchase_ID"], errors='coerce').astype('Int64')
+    current_df_temp["Batch_ID"] = pd.to_numeric(current_df_temp["Batch_ID"], errors='coerce').astype('Int64')
 
 
     #merge them with current inventory, avoid duplicate column ames with suffixes
@@ -98,27 +98,30 @@ def update_current_from_prod(prod_df: pd.DataFrame,current_df: pd.DataFrame) ->p
 
 def calc_current_from_purch(purch:pd.DataFrame, curr_inv:pd.DataFrame) -> pd.DataFrame:
     purch_df = purch.copy()
+    curr_df = curr_inv.copy()
     purch_df["Date_dt"] = pd.to_datetime(purch_df["Date of Purchase"])
-    current_inv_date = pd.to_datetime(curr_inv["Date of Inventory"]).max()
+    current_inv_date = pd.to_datetime(curr_df["Date of Inventory"]).max()
     unprocessed = purch_df[purch_df["Date_dt"] >= current_inv_date].copy()
-    if "Timestamp" in curr_inv.columns:
-        curr_inv["Timestamp"] = pd.to_datetime(curr_inv["Timestamp"], format="mixed", utc=True, errors="coerce").dt.tz_localize(None)
+    if "Timestamp" in curr_df.columns:
+        curr_df["Timestamp"] = pd.to_datetime(curr_df["Timestamp"], format="mixed", utc=True, errors="coerce").dt.tz_localize(None)
     if "Timestamp" in unprocessed.columns:
             unprocessed["Timestamp"] = pd.to_datetime(unprocessed["Timestamp"], format="mixed", utc=True, errors="coerce").dt.tz_localize(None)
 
-    print("curr_inv:")
-    print(curr_inv)
+    # print("curr_inv:")
+    # print(curr_df)
 
     latest_purch_date = unprocessed["Date_dt"].max()
 
     # Sum on Purchase_ID to maintaian distinct costs, needs to pull every column needed in aggregation. It's gonna be given the Date and make the location
     purch_summed_df = unprocessed.groupby(["Timestamp","Purchase_ID", "Item", "Cost"], as_index=False)["Quantity Bought"].sum()
-    print("purch_summed")
-    print(purch_summed_df)
+    # print("purch_summed")
+    # print(purch_summed_df)
     #because purchase_IDs will be unique, we want both what current inventory has and what we have.
     
-    curr_inv["Cost"] = pd.to_numeric(curr_inv["Cost"], errors="coerce")
-    purch_summed_df["Cost"] = pd.to_numeric(purch_summed_df["Cost"], errors="coerce")
+    curr_df["Cost"] = pd.to_numeric(curr_df["Cost"], errors="coerce")
+    curr_df["Purchase_ID"]  = pd.to_numeric(curr_df["Purchase_ID"], errors='coerce')
+    purch_summed_df["Cost"] = pd.to_numeric(purch_summed_df["Cost"], errors='coerce')
+    purch_summed_df["Purchase_ID"] = pd.to_numeric(purch_summed_df["Purchase_ID"], errors='coerce')
     
     merged_inv = pd.merge(curr_inv , purch_summed_df, on = ["Purchase_ID", "Item", "Cost"], how = "outer", suffixes=("_curr","_purch"))
 
@@ -147,7 +150,7 @@ def calc_current_from_purch(purch:pd.DataFrame, curr_inv:pd.DataFrame) -> pd.Dat
         "Cost"
     ]]
 
-#Pulls unique dates from a date column, based on the correct ledger type
+#Pulls unique dates from a date column, based on the correct ledger type, possibly obsolete?
 def unique_dates(ledger_type:str, dataframe: pd.DataFrame) ->pd.DataFrame:
     if ledger_type == "Sales":
         date_col = "Date of Sales"
@@ -173,29 +176,6 @@ def unique_dates(ledger_type:str, dataframe: pd.DataFrame) ->pd.DataFrame:
     dates_df = duckdb.query(dates_query).df()
 
     return dates_df
-
-def test():
-    bill_of_mats = "Inventory - DIM - Production Table.csv"
-    production_ledger_path = "Inventory - FACT - Production Ledger.csv"
-    purchase_path = "Inventory - FACT - Purchases.csv"
-    expanded_prod_ledger_path = "FACT - Production Ledger.csv" 
-    purch_ledger_path = "DIM - Purchases Ledger.csv"
-
-    bill_of_mats_df = pd.read_csv(bill_of_mats)
-    unprocessed_df = pd.read_csv(production_ledger_path)
-    purch_ledger_df = pd.read_csv(purchase_path)
-    expanded_prod_df = pd.read_csv(expanded_prod_ledger_path)
-
-    purch_ledger_df = purch_ledger_df.drop(columns=["Item / Style","Category(for styles only; leave blank for packaging and inputs)"])
-    lots = backdating_purchases("Purchase", purch_ledger_df,purch_ledger_path)
-    next_batch_num = 1 if expanded_prod_df.empty else int(expanded_prod_df["Batch_ID"].max()) + 1
-
-    print("testing expand_production_df")
-    purch_log, production_log = expand_production_df(bill_of_mats_df,unprocessed_df,expanded_prod_df,lots,next_batch_num)
-
-    purch_log.to_csv(purch_ledger_path, header=True, index=False, date_format='%Y-%m-%dT%H:%M:%S')
-    production_log.to_csv(expanded_prod_ledger_path, mode='a', header=False, index=False,date_format='%Y-%m-%dT%H:%M:%S')
-
 
 def expand_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataFrame, expanded_prod_df: pd.DataFrame, lots: pd.DataFrame, batch_start_num: int) -> tuple[pd.DataFrame,pd.DataFrame,pd.DataFrame]:
     new_ledger = unprocessed_df.copy()
@@ -249,10 +229,14 @@ def expand_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataF
 
     raw_mats_df = pd.concat([components_df,art_df],ignore_index=True)
     #pull active lots from output purchase ledger
-    print("Printing lots from purchases:")
-    print(lots)
+    # print("Printing lots from purchases:")
+    # print(lots)
     
     active_lots_df = lots[lots["Status"]=="Active"].copy() #what we have purchased for use with active lots
+
+    # print("PRINTING ACTIVE LOTS:")
+    # print(active_lots_df)
+    active_lots_df["Purchase_ID"] = pd.to_numeric(active_lots_df["Purchase_ID"], errors='coerce')
 
     production_log = expanded_prod_df.copy() #historical log of what we've made in the past
     new_prod_list_dicts = []
@@ -272,21 +256,32 @@ def expand_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataF
                     print(f"Exiting without saving...")
                     raise ValueError
             #identify the current FIFO active Lot
-            lotID = masked_lots["Purchase_ID"].min()
+            lotID = masked_lots.sort_values(by="Purchase_ID",ascending=True).iloc[0]["Purchase_ID"]
 
+            # print("=====")
+            # print(f"Working production against {lotID}")
+            # print("=====")
+
+            production_log["Purchase_ID"] = pd.to_numeric(production_log["Purchase_ID"],errors='coerce')
             past_consumed = production_log.loc[production_log["Purchase_ID"]== lotID,"Qty Delta"].sum() #comes as a negative number for consumption!
+
+            # print(f"Total Consumed before today: {past_consumed}")
 
             #determine how many have already been used this run
             run_consumed = 0
             for run in new_prod_list_dicts:
                 if run.get("Purchase_ID") == lotID:
                     run_consumed += run["Qty Delta"] # a negative number
-                
+            # print("=====")
+            # print(f"Total Consumed today: {run_consumed}")
+            # print("=====")
+            
             #calculate the remaining quantity of items left in the lot
             qty_bought = masked_lots.loc[masked_lots["Purchase_ID"]==lotID,"Quantity Bought"].iloc[0]
             current_consumed = row["Qty Delta"]  #also a negative number
             qty_remaining = qty_bought + past_consumed + run_consumed + current_consumed
 
+            # print(f"Qty remaining {qty_remaining} for {lotID}")
             #determine how to process:
             if qty_remaining >= 0: # Current lot meets the demand
                 if qty_remaining == 0: # Special case: last one in the lot, turn the lot to exhausted
@@ -298,20 +293,21 @@ def expand_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataF
 
                 new_prod_list_dicts.append(row_dict) #allows us to update quantity consumed by total in QTy Delta
                 break
-            else:       #Special Case: the math says there isn't enough here to fill production (i.e. a single unit), tthe lot mustt be erroneously active; change and repeat loop
+            else:       #Special Case: the math says there isn't enough here to fill production (i.e. a single unit), the lot mustt be erroneously active; change and repeat loop
                 active_lots_df.loc[active_lots_df["Purchase_ID"] == lotID, "Status"] = "Exhausted"
 
 
     if new_prod_list_dicts:
-        production_log = pd.concat([production_log, pd.DataFrame(new_prod_list_dicts)], ignore_index=True)
+        new_production_log = pd.DataFrame(new_prod_list_dicts)
 
-    print("Printing active_los_df:")
-    print(active_lots_df)
+    # print("Printing active_los_df:")
+    # print(active_lots_df)
     #make a status map of everything changed in production run
     status_map = active_lots_df.set_index("Purchase_ID")["Status"]
 
     # After running all of production, update statuses of the lots in the purchases ledger.
     updated_purchase_lots = lots.copy()
+    updated_purchase_lots["Purchase_ID"] = pd.to_numeric(updated_purchase_lots["Purchase_ID"],errors='coerce')
     updated_purchase_lots["Status"] = updated_purchase_lots["Purchase_ID"].map(status_map).fillna(updated_purchase_lots["Status"])
                     
     finished_goods_df = pd.DataFrame({
@@ -323,26 +319,29 @@ def expand_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataF
         "Type": "Production"
     })
     #prep production log for math because pandas doesn't like currency
-    production_log["Cost"] = (production_log["Cost"].astype(str).str.replace(r"[$,]", "", regex=True))
-    production_log["Cost"] = pd.to_numeric(production_log["Cost"], errors="coerce").fillna(0.0)
+    new_production_log["Cost"] = (new_production_log["Cost"].astype(str).str.replace(r"[$,]", "", regex=True))
+    new_production_log["Cost"] = pd.to_numeric(new_production_log["Cost"], errors="coerce").fillna(0.0)
 
     # Calculate Cost of Good produced based on the production log, referencing the Batch_ID, append to log and to a new production lots df
-    batch_costs = production_log.groupby("Batch_ID")["Cost"].sum().round(2)
+    batch_costs = new_production_log.groupby("Batch_ID")["Cost"].sum().round(2)
     finished_goods_df["Purchase_ID"] = pd.NA #needs to be blank, but an existing column for dataframe concate
     finished_goods_df["Cost"] = finished_goods_df["Batch_ID"].map(batch_costs)
 
     #Append to log
-    production_log = pd.concat([production_log,finished_goods_df], ignore_index=True)
-    
+    new_production_log = pd.concat([new_production_log,finished_goods_df], ignore_index=True)
+    new_production_log = new_production_log[["Batch_ID","Timestamp","Date of Production","Item","Purchase_ID","Type","Qty Delta","Cost"]]
+
+    # print("NEW PRODUCTION LOG:")
+    # print(new_production_log)
     #prep new production lots & format
     production_lots = finished_goods_df.copy()
     production_lots["Qty"] = production_lots["Qty Delta"]
     production_lots["Status"]  = "Active"
     production_lots = production_lots.drop(columns=["Purchase_ID","Qty Delta"])
 
-    return updated_purchase_lots, production_log, production_lots
+    return updated_purchase_lots, new_production_log, production_lots
 
-def calc_sales_df(sales_df: pd.DataFrame, updated_purchase_lots: pd.DataFrame, updated_production_lots: pd.DataFrame, sales_history_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def calc_sales_df(next_Sales_ID: int, sales_df: pd.DataFrame, updated_purchase_lots: pd.DataFrame, updated_production_lots: pd.DataFrame, sales_history_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     sales_df_temp = sales_df.copy()
     sales_df_temp["Date_dt"] = pd.to_datetime(sales_df_temp["Date of Sales"])
 
@@ -476,7 +475,7 @@ def calc_sales_df(sales_df: pd.DataFrame, updated_purchase_lots: pd.DataFrame, u
     if not sticker_sales.empty:
         
         stickers_by_lot, sales_updated_purchase_lots = stock_depletion("Sticker", sales_updated_purchase_lots, sticker_sales, sales_history_df)
-        sales_updated_purchase_lots.rename(columns={"Qty": "Quantity Bought"}, inplace=True)
+    
 
     if not production_sales.empty:
         produced_sales_by_lot, sales_updated_production_lots = stock_depletion("Produced",updated_production_lots, production_sales, sales_history_df)
@@ -486,14 +485,26 @@ def calc_sales_df(sales_df: pd.DataFrame, updated_purchase_lots: pd.DataFrame, u
     for id_col in ["Purchase_ID", "Batch_ID"]:
         if id_col not in sales_by_lot.columns:
             sales_by_lot[id_col] = pd.NA
-
+    sales_by_lot = sales_by_lot.sort_values(
+        by=["Date of Sales","Event Name","Item"]
+    )
+    sales_by_lot["Sales_ID"] = range(next_Sales_ID, next_Sales_ID + len(sales_by_lot))
+        
+    sales_updated_purchase_lots.rename(columns={"Qty": "Quantity Bought"}, inplace=True)
     #we now need to return the sales data, along with the most updated purchase and production lots
     return sales_by_lot, sales_updated_purchase_lots, sales_updated_production_lots
 
 def calc_curr_from_sales (sales_df: pd.DataFrame, current_df: pd.DataFrame):
     #    1. Pre-aggregate sales if sales_df can have multiple rows per ID
     sales_cols = ["Timestamp", "Date of Sales", "Activity", "Qty Sold"]
-    
+
+    # print("Printing sales to calc current inv")
+    # print(sales_df)
+    sales_df["Batch_ID"] = pd.to_numeric(sales_df["Batch_ID"],errors='coerce')
+    sales_df["Purchase_ID"] = pd.to_numeric(sales_df["Purchase_ID"], errors='coerce') # error here
+    current_df["Batch_ID"] = pd.to_numeric(current_df["Batch_ID"],errors='coerce')
+    current_df["Purchase_ID"] = pd.to_numeric(current_df["Purchase_ID"], errors='coerce')
+
     sales_batch = (sales_df[sales_df["Batch_ID"].notna()].groupby("Batch_ID", as_index=False)[sales_cols].last()) # Retains latest metadata; use .agg({'Qty Sold': 'sum'}) if Qty needs summing
     sales_purch = (sales_df[sales_df["Purchase_ID"].notna()].groupby("Purchase_ID", as_index=False)[sales_cols].last())
 

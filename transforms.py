@@ -128,8 +128,13 @@ def append_to_inv(hist_path: str,current_inv: pd.DataFrame):
 
     #high granularity version
     inv_to_append = current_inv.copy()
+    inv_hist = pd.read_csv(hist_path)
+
+    last_run_id = inv_hist["Run_ID"].max() if pd.notna(inv_hist["Run_ID"].max()) else -1
+    inv_to_append["Run_ID"] = last_run_id+1
     inv_to_append['Date of Inventory'] = pd.to_datetime(inv_to_append['Date of Inventory']).dt.strftime('%Y-%m-%d')
     inv_to_append = inv_to_append.drop(columns=['Style', 'Subcategory', 'Category','Final Product', 'Input Product'])
+    inv_to_append = inv_to_append[inv_hist.columns]
     rows = len(inv_to_append)
     inv_to_append.to_csv(hist_path, mode='a', header=False, index=False,date_format='%Y-%m-%dT%H:%M:%S')
     print(f"Current inventory appended to: {hist_path}. {rows} rows added.")
@@ -391,7 +396,7 @@ def current_inv_enrichment(current_df: pd.DataFrame, master_table_path: str) ->p
 # ------
 
 # New transforms to include Timestamps
-def transform_sales(datafile:  pd.DataFrame, master_table_df: pd.DataFrame) -> pd.DataFrame:
+def transform_raw_sales(datafile:  pd.DataFrame, master_table_df: pd.DataFrame) -> pd.DataFrame:
     unpivot = """
         WITH unpivoted as (
             FROM  datafile
@@ -401,6 +406,7 @@ def transform_sales(datafile:  pd.DataFrame, master_table_df: pd.DataFrame) -> p
                         Timestamp,
                         "Email Address",
                         "Date of Sales",
+                        Event_ID,
                         "Name of Event/ Venue",
                         "Location (City)", 
                         "Total Sales($)",
@@ -411,6 +417,7 @@ def transform_sales(datafile:  pd.DataFrame, master_table_df: pd.DataFrame) -> p
         ) 
         SELECT 
             u.Timestamp AS Timestamp,
+            u.Event_ID,
             u."Date of Sales" AS "Date of Sales",
             u."Name of Event/ Venue" AS "Event Name",
             u.Item AS Item,
@@ -423,8 +430,6 @@ def transform_sales(datafile:  pd.DataFrame, master_table_df: pd.DataFrame) -> p
     """
 
     sales = duckdb.query(unpivot).df()
-
-    sales.to_csv("unpivoted")
 
     return sales
 
@@ -469,7 +474,7 @@ def transform_purchase(dataframe) -> pd.DataFrame:
         df."Subtotal",
         Status
     FROM dataframe as df
-    ORDER BY df."Date of Purchase" ASC
+    ORDER BY df.Purchase_ID ASC
     """
     ex_col = duckdb.query(query).df()
     return ex_col
@@ -492,6 +497,7 @@ def transform_production(dataframe) -> pd.DataFrame:
 def transform_events(datafile:  pd.DataFrame) ->  pd.DataFrame:
     event_query = """
         SELECT
+            Event_ID,
             Timestamp,
             "Date of Sales",
             "Name of Event/ Venue" AS "Event Name",
@@ -504,3 +510,24 @@ def transform_events(datafile:  pd.DataFrame) ->  pd.DataFrame:
     """
 
     return duckdb.query(event_query).df()
+
+def transform_sales_by_lot_df(sales_by_lot_df: pd.DataFrame) -> pd.DataFrame:
+
+    query = """
+SELECT
+    Sales_ID,
+    Timestamp,
+    Event_ID,
+    "Date of Sales",
+    "Event Name",
+    Item,
+    Subcategory,
+    Qty AS "Qty Sold",
+    Purchase_ID,
+    Batch_ID,
+    Cost
+FROM sales_by_lot_df
+ORDER BY Sales_ID
+"""
+
+    return duckdb.query(query).df()
