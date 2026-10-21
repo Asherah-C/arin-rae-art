@@ -115,7 +115,6 @@ No new main features. Back end prep for Purchase /Production logic for cost anal
 
 # 1.2.3 Patch Notes
 
-
 ### Resolved Bugs
 * Fixed a calculation error where initialization files were double calculated.
 
@@ -126,15 +125,73 @@ No new main features. Back end prep for Purchase /Production logic for cost anal
 * Add Joins of Production Tables
 * Inventory Enrichment turns all activities into "Calculated"
 
-# 1.2.4 Hotfix
-
-
-### Resolved Bugs
-* Fixed a calculation error where sales and purchases were run on empty dataframe when a prior activity shared the same date
-
+# 1.2.3-1 Commit to Main before Branch
 ### Known Bugs and Issues
 * Needs a way to build-in spot check inventories (possible Power BI function over python?)
 * No price or expenses data is ETLed at this time.
 * Add cannibalism logic to Production
 * Add Joins of Production Tables
 * Inventory Enrichment turns all activities into "Calculated"
+
+# 2.0 Costs of Good Sold BETA
+
+### New Features
+* Purchase Lot Enforcement:
+-   Assigns Purchase_ID to each item-qty purchased
+-   Tracks Active vs Exhausted lots to ensure First-In-First-Out accounting
+* Production Batching:
+-   Derives individual cost of good produced by building each item individually from available inputs
+-   Uses First-In, First-Out production accounting
+* Added new columns:
+-   Input Purchase Ledger Columns: Purchase_ID (autocalc)
+-   Ouput Purchase Ledger Columns: Purchase_ID, Status (Active or Exhausted)
+-   Output Production Ledger Columns: Batch_ID (autocalc by single qty item produced), Purchase_ID (for inputs only), Cost
+-   DIM - Current Inventory: added Purchase_ID, Batch_ID, and Cost columsn; cost of item (ea) per appropriate ID
+-   FACT - Event Sales.csv now assigns sales by Purchase or Batch ID (looks much more exploded);
+*  New Output Table!
+- DIM - Production Lots.csv tracks production batch log, cost per unit assembled and status.
+
+## Removed Features
+* To maintain consistent granularity of items across inventory, we removed the sumprint production logic, as well as purchase production logic. these will need to be implemented in a BI feature push to retain function for end-user.
+* Current Inventory no longer sums up total counts on item, but now on Purchase_ID or Batch_ID, whichever is appropriate. Full aggregation will need to be implemented in BI feature push to retain function of end-user.
+* Event Sales no longer aggreated on item; Full aggregation will need to be implemented in BI feature push to retain function of end-user.
+
+### Resolved Issues
+* Renamed flags for consistency
+* Changed Inventory Location to Inventory Activity to avoid ambiguity and increase granualarity of data
+
+# 2.0.1 Costs of Good Sold BETA - Hotfix
+### Resolved Issues
+* FACT - Event Sales.csv was missing Subcategory Column
+
+# 2.0.2 Costs of Good Sold BETA - Patch
+### Additional Features
+* Inventory History Run Tracking
+-   Run_ID column in inventory_history.csv to differentiate exact snapshots for backdating activity and provide clear date-captured snapshot, where the snapshot date = max(Date of Inventory) for each Run_ID
+
+* !!! IMAGED DATA !!!
+- The program now successfully zips all output files together upon successful completion of a data ETL process.
+- Files saved as "{Date of Activity} | {Activity}.zip" within a directory called "Imaged Data by default."
+- Default directory can be renamed using args flag --image-dir.
+
+* By-Activity Processing
+- The program now processes new activities one at a time by date first, and activity priority (still inventory, purchase, production, sales) individually.
+- This increases granularity of data output, in case backdated data is later discovered, as well as ensures more accurate backups.
+
+### Resolved Issues
+* Removed an errroneous args flag (raw-mats-ledger).
+
+### Under the Hood
+* Eliminated several functions through streamlining, many of which caused errors in
+* Removed validations.py from program. No longer used.
+
+### Known Bugs and Issues
+* Needs a way to build-in spot check inventories (possible Power BI function over python?)
+* No price data is ETLed at this time. Slated for future feature release.
+* Add cannibalism logic to Production
+* Add Joins of Production Tables
+
+### Dev Log
+* 10/9/2026:    To Do - Upstream cast column types on pd.read_csv()
+* 10/21/2026:   Consider production, (stock qty), Master Item Table tables in .zip file?
+-               Inventory largely untested. Will wish to see how it iteracts with program.             

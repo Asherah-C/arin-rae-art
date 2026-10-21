@@ -4,6 +4,7 @@
 - main.py
 - transforms.py
 - calculations.py
+- initalization.py
 - processing.py
 - changelog.md
 - README.md
@@ -42,3 +43,6 @@ python3 main.py [flag] (option:path)
 --events                        "FACT - Events.csv"                                 Output Event Data
 --current-inv                   "DIM - Current Inventory.csv"                       Output Current Inventory (Merged and Calculated)
 --master-table-output           "DIM-Master Item Table.csv"                         Output Master Item Table copy
+--production-lots               "DIM - Production Lots.csv"                         Output Table of Production Lots and Status
+### Output Directory
+--image-dir                     "Imaged Data"                                       Directory where .zipp images of output files are stored

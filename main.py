@@ -1,7 +1,7 @@
 import os
 import sys
 import argparse
-from initialization import initialize_outputs, initialize_inventory_history, initialize_ledgers
+from initialization import initialize_outputs
 from processing import find_unprocessed_data
 
 # Unified Path Variables
@@ -16,12 +16,13 @@ raw_sales_path = "Inventory - FACT - Historical Sales.csv"
 
 expanded_prod_ledger_path = "FACT - Production Ledger.csv"  
 inv_history_path = "FACT - Inventory History.csv"
-purch_ledger_path = "FACT - Purchases Ledger.csv"
+purch_ledger_path = "DIM - Purchases Ledger.csv"
 events_sales_path = "FACT - Event Sales.csv"
 events_path = "FACT - Events.csv"
 current_inventory_path = "DIM - Current Inventory.csv"
-master_table_output = "DIM-Master Item Table.csv"
-
+master_table_output = "DIM - Master Item Table.csv"
+production_lots_path = "DIM - Production Lots.csv"
+image_dir = "Imaged Data"
 
 
 ### ----------- ARGS Quick Reference -----------
@@ -32,6 +33,7 @@ master_table_output = "DIM-Master Item Table.csv"
 #    events_path = args.events
 #    current_inventory_path = args.current_inv
 #    master_table_output = args.master_table_output
+#    production_lots_path = args.prod_lots_output
 #
 #    master_table_path = args.master_item
 #    stock_levels_path = args.stock_levels
@@ -41,6 +43,7 @@ master_table_output = "DIM-Master Item Table.csv"
 #    production_ledger_path = args.production_path
 #    bill_of_mats = args.bill_of_mats
 #    raw_sales_path = args.sales_source
+#    image_dir = args.image_dir
 # ------------------------------------------------
 
 
@@ -71,42 +74,6 @@ def main():
         metavar = "FILE",
         help = "process all activities after initialization.",
     )
-#    group.add_argument(
-#        "-sales",
-#        "--sales",
-#        nargs = "?",
-#        const = default_sales,
-#        default = None,
-#        metavar = "FILE",
-#        help = "path to sales CSV file",
-#    )
-#    group.add_argument(
-#        "-inv",
-#        "--inventory",
-#        nargs = "?",
-#        const = default_inv,
-#        default = None,
-#        metavar = "FILE",
-#        help = "Path to inventory CSV file",
-#    )
-#    group.add_argument(
-#        "-prod",
-#        "--production",
-#        nargs = "?",
-#        const = prod_ledger_source,
-#        default = None,
-#        metavar = "FILE",
-#        help = "Path to source production ledger CSV file",
-#    )
-#    group.add_argument(
-#            "-purch",
-#            "--purchases",
-#            nargs = "?",
-#            const = purchases,
-#            default = None,
-#            metavar = "FILE",
-#            help = "Path to raw purchases ledger CSV file",
-#        )
     group.add_argument(
             "-ini",
             "--initialize",
@@ -167,13 +134,13 @@ def main():
         help = "Path to source (pivoted) sales table CSV file"
     )
     parser.add_argument(
-        "--current_inv",
+        "--current-inv",
         default = current_inventory_path,
         metavar = "FILE",
         help = "Path to output current inventory table CSV file"
     )
     parser.add_argument(
-        "--inv_history",
+        "--inv-history",
         default = inv_history_path,
         metavar = "FILE",
         help = "Path to output inventory history table CSV file"
@@ -206,7 +173,20 @@ def main():
         "--master-table-output",
         default = master_table_output,
         metavar = "FILE",
-        help = "Path to outputMaster Item Table CSV file"
+        help = "Path to output Master Item Table CSV file"
+    )
+    parser.add_argument(
+        "--prod-lots-output",
+        default = production_lots_path,
+        metavar = "FILE",
+        help = "Path to output of Production Batch ID lots Ledger CSV file"
+    )
+    parser.add_argument(
+        "--image-dir", 
+        type=str,
+        default = image_dir,
+        metavar = "DIR",
+        help = "Directory path for zip files (images of runs)"
     )
 
     args = parser.parse_args()
