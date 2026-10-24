@@ -124,8 +124,19 @@ def find_unprocessed_data(args) -> list[pd.Timestamp, pd.Timestamp, dict]:
             # print("Testing to see if activity is empty. It is not.")
 
         if not all(df.empty for df in loaded_dict.values()):
-            append_ledgers(args, activity_dict, prepped_prod_df, updated_purchase_lots, production_lots, prepped_sales_df)
+            append_ledgers(args, activity, activity_dict, prepped_prod_df, updated_purchase_lots, production_lots, prepped_sales_df)
             image_run(args, date, activity)
+
+        vars_to_clean = [
+            'activity_to_load_df', 'updated_purchase_lots', 'prepped_prod_df', 'production_lots', 'prepped_sales_df'
+        ]
+        for var_name in vars_to_clean:
+            if var_name in locals():
+                del locals()[var_name]
+        
+        # 2. Force Python's garbage collector to release the memory immediately
+        import gc
+        gc.collect()
             
 
 
@@ -196,7 +207,10 @@ def find_unprocessed_data(args) -> list[pd.Timestamp, pd.Timestamp, dict]:
                 if activity in activities_by_date.keys():
                     df_to_load = {}
                     df_to_load[activity] = date_activity_dict[date][activity]
-                    activity_dict = date_activity_dict[date]
+                    activity_dict = df_to_load[activity]
+                    print(loaded_dict)
+                    print("======= Activity Dict =====")
+                    print(activity_dict)
                     print(f"Running {activity} data for {date} in merge_raw_data_for processing....")
                     activity_to_load_df, updated_purchase_lots, prepped_prod_df, production_lots, prepped_sales_df = merge_raw_data_for_processing(args,df_to_load)
                     saving_files(args, activity_to_load_df,backdated_data, activity_dict, prepped_prod_df, updated_purchase_lots, production_lots, prepped_sales_df, date, activity)
@@ -265,23 +279,23 @@ def find_unprocessed_data(args) -> list[pd.Timestamp, pd.Timestamp, dict]:
                 with zipfile.ZipFile(best_zip_path, "r") as zip_ref:
                     zip_ref.extractall()
          
-            # 1. Explicitly delete the local DataFrame references holding stale data
-            vars_to_clean = [
-                'current_inv_df', 'inv_history_df', 'raw_sales_df', 'raw_prod_df', 
-                'raw_purch_df', 'raw_inv_df', 'loaded_dict', 'earliest_activities', 
-                'date_activity_dict', 'missing_inventories_df', 'missing_purchases_df', 
-                'missing_sales_df', 'missing_production_df'
-            ]
-            for var_name in vars_to_clean:
-                if var_name in locals():
-                    del locals()[var_name]
-            
-            # 2. Force Python's garbage collector to release the memory immediately
-            import gc
-            gc.collect()
-            
-            # 3. Trigger recursion (make sure your function is designed to re-load from disk at the start!)
-            return find_unprocessed_data(args)
+        # 1. Explicitly delete the local DataFrame references holding stale data
+        vars_to_clean = [
+            'current_inv_df', 'inv_history_df', 'raw_sales_df', 'raw_prod_df', 
+            'raw_purch_df', 'raw_inv_df', 'loaded_dict', 'earliest_activities', 
+            'date_activity_dict', 'missing_inventories_df', 'missing_purchases_df', 
+            'missing_sales_df', 'missing_production_df'
+        ]
+        for var_name in vars_to_clean:
+            if var_name in locals():
+                del locals()[var_name]
+        
+        # 2. Force Python's garbage collector to release the memory immediately
+        import gc
+        gc.collect()
+        
+        # 3. Trigger recursion (make sure your function is designed to re-load from disk at the start!)
+        return find_unprocessed_data(args)
 
         
 # Pull dataframes of all relevant data, convert into single table to analyze
@@ -298,36 +312,6 @@ def merge_raw_data_for_processing(args, loaded_dict: dict[str:pd.DataFrame]) -> 
     prepped_prod_df = pd.DataFrame()
     production_lots = pd.DataFrame()
     prepped_sales_df= pd.DataFrame()
-
-    #is this strictly necessary? Maybe yes, maybe no (probably not now that the program handles things separately. consider editing out in a future iteration)
-    def pending_purchases(purch_ledger_path: str,loaded_dict: dict) -> pd.DataFrame: # returns a daily up-to-date purchase ledger in case a downstream activity needs purchase data before it is proccessed
-        purch_ledger_df = pd.read_csv(purch_ledger_path)
-        pending_purch = pd.DataFrame()
-        #check for pending purchases, if true, load them into memory for processing
-        if "Purchase" in loaded_dict and not loaded_dict["Purchase"].empty:
-            pending_purch = transform_purchase(loaded_dict["Purchase"])
-            #pull the current status
-
-            # print("Printing Pending Purchases:")
-            # print(pending_purch)
-
-            if "Purchase_ID" in purch_ledger_df.columns and not pending_purch.empty:
-                existing_purch = set(pd.to_numeric(purch_ledger_df["Purchase_ID"], errors='coerce').dropna().astype('Int64'))
-                pending_purch_ids = pd.to_numeric(pending_purch["Purchase_ID"], errors='coerce')
-                new_purch = pending_purch[~pending_purch_ids.isin(existing_purch)].copy()
-
-                # print("Printing new_purch:")
-                # print(new_purch)
-
-                if not new_purch.empty:
-                    if "Status" not in new_purch.columns or new_purch["Status"].isna().all:
-                        new_purch["Status"] = "Active"
-                else:
-                    new_purch["Status"] = new_purch["Status"].fillna("Active")
-
-                purch_ledger_df = pd.concat([purch_ledger_df,new_purch], ignore_index=True)
-
-        return purch_ledger_df
 
     for activity, raw_df in loaded_dict.items():
         if raw_df.empty:
@@ -355,11 +339,9 @@ def merge_raw_data_for_processing(args, loaded_dict: dict[str:pd.DataFrame]) -> 
 
     # Step 2.2d: transform Production Data
         elif activity == "Production":
+            purch_ledger_df = pd.read_csv(purch_ledger_path)
             compressed_prod = transform_production(raw_df)
             expanded_prod_df = pd.read_csv(expanded_prod_ledger_path)
-            # get an up-to-date purchase ledger, even if there is loaded but not applied purchase activity today
-            purch_ledger_df = pending_purchases(purch_ledger_path,loaded_dict)
-
             next_batch_num = 1 if expanded_prod_df.empty else int(expanded_prod_df["Batch_ID"].max()) + 1
             updated_purchase_lots, prepped, production_lots = expand_production_df(bill_of_mats_df,compressed_prod,expanded_prod_df,purch_ledger_df,next_batch_num)
 
@@ -371,14 +353,12 @@ def merge_raw_data_for_processing(args, loaded_dict: dict[str:pd.DataFrame]) -> 
 
     # Step 2.2a: transform Sales Data
         elif activity == "Sales":
+            purch_ledger_df = pd.read_csv(purch_ledger_path)
             prepped= transform_raw_sales(raw_df, master_table_df)
            
             events_sales_path = args.sales_output
             sales_history_df = pd.read_csv(events_sales_path)
             next_sales_ID = max(sales_history_df["Sales_ID"], default=0)+1
-
-            # get an up-to-date purchase ledger, even if there is loaded but not applied purchase activity today
-            purch_ledger_df = pending_purchases(purch_ledger_path,loaded_dict)
 
             #if production was also run today, use its processed purchase lots instead of the original
             if not updated_purchase_lots.empty:
@@ -529,7 +509,7 @@ def populate_inventory_history(args, activity_ledger: pd.DataFrame, backdated_da
     print(f"{current_inventory_path} overwitten with current data. {len(current_inventory)} rows saved.")
 
 # Populate the Power-BI ledgers with data
-def append_ledgers(args, loaded_dict,prepped_prod_df: pd.DataFrame, purch_activity_update: pd.DataFrame, production_lots: pd.DataFrame, prepped_sales_df: pd.DataFrame):
+def append_ledgers(args, activity, activity_dict, prepped_prod_df: pd.DataFrame, purch_activity_update: pd.DataFrame, production_lots: pd.DataFrame, prepped_sales_df: pd.DataFrame):
 
     expanded_prod_ledger_path = args.expanded_production 
     purch_ledger_path = args.purchases_output
@@ -540,46 +520,47 @@ def append_ledgers(args, loaded_dict,prepped_prod_df: pd.DataFrame, purch_activi
     production_lots_path = args.prod_lots_output
 
     #Step 4.1 : Unpack the Dataframes
-    if "Sales" in loaded_dict.keys():
-        raw_sales_to_append = loaded_dict["Sales"]
+    if activity == "Sales":
+        if isinstance(prepped_sales_df,pd.DataFrame) and not prepped_sales_df.empty:
+                sales = transform_sales_by_lot_df(prepped_sales_df)
+                events = transform_events(activity_dict)
+        
+                #I believe these are broken now....
+                dates_df = unique_dates("Sales", sales)
+        
+                backdating_sales_events("Sales",dates_df, sales, events_sales_path)
+                backdating_sales_events("Events",dates_df, events, events_path)
+                #When we have sales modifying out production lots, we need it to return only the active ones, so we overwrite
+                if isinstance(production_lots, pd.DataFrame) and not production_lots.empty:
+                    production_lots.to_csv(production_lots_path, header = True, index=False, date_format='%Y-%m-%dT%H:%M:%S', mode='w')
     else:
         raw_sales_to_append = pd.DataFrame
-    if "Purchase" in loaded_dict.keys():
-        raw_purch_to_append = loaded_dict["Purchase"]
+    
+    if activity == "Purchase":
+        raw_purch_to_append = activity_dict
+        if isinstance(raw_purch_to_append,pd.DataFrame) and not raw_purch_to_append.empty:
+            purchases = transform_purchase(raw_purch_to_append)
+            backdating_purchases("Purchase",purchases,purch_ledger_path)
     else:
         raw_purch_to_append = pd.DataFrame
 
     bill_of_mats_df = pd.read_csv(bill_of_mats)
     master_table_df = pd.read_csv(master_table_path)
 
-    #Step 4.2 Populate Sales and Events Ledgers, test for empty
-    # this is no longer valid code in transform sales because we're now looking at sales by lot now, not an aggregate; we should implement a Sales_ID number as well...
-    if isinstance(raw_sales_to_append,pd.DataFrame) and not raw_sales_to_append.empty:
-        sales = transform_sales_by_lot_df(prepped_sales_df)
-        events = transform_events(raw_sales_to_append)
-
-        #I believe these are broken now....
-        dates_df = unique_dates("Sales", sales)
-
-        backdating_sales_events("Sales",dates_df, sales, events_sales_path)
-        backdating_sales_events("Events",dates_df, events, events_path)
-
-    #4.3 Populate Purchase Ledger
-    if isinstance(raw_purch_to_append,pd.DataFrame) and not raw_purch_to_append.empty:
-        purchases = transform_purchase(raw_purch_to_append)
-        backdating_purchases("Purchase",purchases,purch_ledger_path)
-
     #4.4 Populate the expanded production ledger
     if isinstance(prepped_prod_df,pd.DataFrame)and not prepped_prod_df.empty:
         prepped_prod_df = prepped_prod_df.drop(columns="Activity")
         backdating_purchases("Production",prepped_prod_df,expanded_prod_ledger_path)
 
+        #When we run production, we need to append the new lots to the current production lots file
+        if isinstance(production_lots, pd.DataFrame) and not production_lots.empty:
+            production_lots.to_csv(production_lots_path, header = False, index=False, date_format='%Y-%m-%dT%H:%M:%S', mode='a')
+
     #if there are updates to the purchases or production lots ledgers, run them too
     if isinstance(purch_activity_update,pd.DataFrame) and not purch_activity_update.empty:
         purch_activity_update.to_csv(purch_ledger_path, header=True, index=False,date_format='%Y-%m-%dT%H:%M:%S')
 
-    if isinstance(production_lots, pd.DataFrame) and not production_lots.empty:
-        production_lots.to_csv(production_lots_path, header = True, index=False, date_format='%Y-%m-%dT%H:%M:%S')
+
 
 def image_run(args,date: str,activity: str):
     expanded_prod_ledger_path = args.expanded_production 

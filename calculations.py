@@ -46,10 +46,12 @@ def update_current_from_prod(prod_df: pd.DataFrame,current_df: pd.DataFrame) ->p
     # purchase items have to have a purchase_id (purchased items may also have a batch_id, if they are an input for a final product, but stickers won't, so batch_id is useless here)
     purchased_items = prod_df_temp[prod_df_temp["Purchase_ID"].notna() & (prod_df_temp["Purchase_ID"] !="")]
     purchased_items_group = purchased_items.groupby(["Date of Production", "Inventory Activity", "Item", "Purchase_ID", "Cost"], as_index=False, dropna=False)["Qty Delta"].sum()
+    purchased_items_group["Inventory Activity"]
 
     #made items won't have data in purchase_id and also will have data in batch_id
     made_items = prod_df_temp[(prod_df_temp["Purchase_ID"].isna() | (prod_df_temp["Purchase_ID"] =="")) & (prod_df_temp["Batch_ID"].notna()) & (prod_df_temp["Batch_ID"] !="")]
     made_items_group = made_items.groupby(["Date of Production", "Inventory Activity", "Item", "Batch_ID", "Cost"], as_index=False, dropna=False)["Qty Delta"].sum()
+    made_items_group["Inventory Activity"] = "Production"
 
 
     prod_summed_df = pd.concat([purchased_items_group,made_items_group],ignore_index=True)
@@ -234,67 +236,109 @@ def expand_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataF
     
     active_lots_df = lots[lots["Status"]=="Active"].copy() #what we have purchased for use with active lots
 
-    # print("PRINTING ACTIVE LOTS:")
-    # print(active_lots_df)
-    active_lots_df["Purchase_ID"] = pd.to_numeric(active_lots_df["Purchase_ID"], errors='coerce')
+    print("PRINTING ACTIVE LOTS:")
+    print(active_lots_df)
+    active_lots_df.to_csv("active_lots_df.csv", header=True, index=False,mode='w')
+    active_lots_df["Purchase_ID"] = pd.to_numeric(active_lots_df["Purchase_ID"], errors='coerce').astype('Int64')
 
     production_log = expanded_prod_df.copy() #historical log of what we've made in the past
+    active_lots_df["Purchase_ID"] = pd.to_numeric(active_lots_df["Purchase_ID"], errors='coerce').astype('Int64')
+    
+    lot_remaining_map  = active_lots_df.set_index("Purchase_ID")["Quantity Bought"].to_dict()
+    if not production_log.empty:
+        historical_totals = production_log.groupby("Purchase_ID")["Qty Delta"].sum().to_dict()
+        for lot_id, delta in historical_totals.items():
+            if lot_id in lot_remaining_map:
+                lot_remaining_map[lot_id] += delta #delta will be a negative number, reducing the amount available based on prior consumption in production runs
+    
+    
     new_prod_list_dicts = []
 
     for _,row in raw_mats_df.iterrows():
         # identify the needed input
         item_needed = row["Item"]
+        current_demand = abs(row["Qty Delta"]) #flipping the sign here to make it more understandbale
 
+        print(f"Needed Item = {item_needed}")
         #create a backup point to rerun in case of errors
-        while True:
+        while current_demand > 0:
             #restrict the search to only active lots of that item
-            masked_lots = active_lots_df[(active_lots_df["Item"]==item_needed) & (active_lots_df["Status"] == "Active")]
-
+            masked_lots = active_lots_df[(active_lots_df["Item"]==item_needed) & (active_lots_df["Status"] == "Active")].sort_values(by="Purchase_ID", ascending=True)
+            print("Printing masked lots")
+            print(masked_lots)
             #exit the loop if there are no active lots for the item
             if masked_lots.empty:
                     print(f"Input Material: {item_needed} is out of stock. Cannot complete production run.")
                     print(f"Exiting without saving...")
                     raise ValueError
             #identify the current FIFO active Lot
-            lotID = masked_lots.sort_values(by="Purchase_ID",ascending=True).iloc[0]["Purchase_ID"]
+            lotID = masked_lots.iloc[0]["Purchase_ID"]
 
             # print("=====")
             # print(f"Working production against {lotID}")
             # print("=====")
+            qty_remaining_in_lot = lot_remaining_map.get(lotID, 0)
 
-            production_log["Purchase_ID"] = pd.to_numeric(production_log["Purchase_ID"],errors='coerce')
-            past_consumed = production_log.loc[production_log["Purchase_ID"]== lotID,"Qty Delta"].sum() #comes as a negative number for consumption!
-
-            # print(f"Total Consumed before today: {past_consumed}")
-
-            #determine how many have already been used this run
-            run_consumed = 0
-            for run in new_prod_list_dicts:
-                if run.get("Purchase_ID") == lotID:
-                    run_consumed += run["Qty Delta"] # a negative number
-            # print("=====")
-            # print(f"Total Consumed today: {run_consumed}")
-            # print("=====")
-            
-            #calculate the remaining quantity of items left in the lot
-            qty_bought = masked_lots.loc[masked_lots["Purchase_ID"]==lotID,"Quantity Bought"].iloc[0]
-            current_consumed = row["Qty Delta"]  #also a negative number
-            qty_remaining = qty_bought + past_consumed + run_consumed + current_consumed
-
-            # print(f"Qty remaining {qty_remaining} for {lotID}")
-            #determine how to process:
-            if qty_remaining >= 0: # Current lot meets the demand
-                if qty_remaining == 0: # Special case: last one in the lot, turn the lot to exhausted
-                    active_lots_df.loc[active_lots_df["Purchase_ID"] == lotID, "Status"] = "Exhausted"
-                #append the consumption to the production_log
-                row_dict = row.to_dict()
-                row_dict["Purchase_ID"] = lotID
-                row_dict["Cost"] = active_lots_df.loc[active_lots_df["Purchase_ID"]== lotID,"Price (each)"].iloc[0]
-
-                new_prod_list_dicts.append(row_dict) #allows us to update quantity consumed by total in QTy Delta
-                break
-            else:       #Special Case: the math says there isn't enough here to fill production (i.e. a single unit), the lot mustt be erroneously active; change and repeat loop
+            if qty_remaining_in_lot == 0: # if nothing remains in the lot, exhaust and repeat
                 active_lots_df.loc[active_lots_df["Purchase_ID"] == lotID, "Status"] = "Exhausted"
+                continue
+
+            if qty_remaining_in_lot < 0: 
+                print("=================================")
+                print(f"Quantity Error reached: Lot_ID: {lotID} Item: {item_needed} has currently available qty: {qty_remaining_in_lot}.")
+                active_lots_df.loc[active_lots_df["Purchase_ID"] == lotID, "Status"] = "Exhausted"
+                print("=================================")
+                continue
+            
+            units_to_take = min(current_demand,qty_remaining_in_lot) #pull up to the qty remaining from current lot for productio consumption
+
+            row_dict = row.to_dict()
+            row_dict["Purchase_ID"] = lotID
+            row_dict["Cost"] = active_lots_df.loc[active_lots_df["Purchase_ID"] == lotID, "Price (each)"].iloc[0]
+            row_dict["Qty Delta"] = -units_to_take
+
+            new_prod_list_dicts.append(row_dict) #make a new dictionary of the consumption
+
+            lot_remaining_map[lotID] -= units_to_take #declinate the saved state of quantity consumed
+
+            if lot_remaining_map[lotID] == 0:
+                active_lots_df.loc[active_lots_df["Purchase_ID"] == lotID, "Status"] = "Exhausted"
+            
+            current_demand -= units_to_take
+
+            # past_consumed = production_log.loc[production_log["Purchase_ID"]== lotID,"Qty Delta"].sum() #comes as a negative number for consumption!
+
+
+            # # print(f"Total Consumed before today: {past_consumed}")
+
+            # #determine how many have already been used this run
+            # run_consumed = 0
+            # for run in new_prod_list_dicts:
+            #     if run.get("Purchase_ID") == lotID:
+            #         run_consumed += run["Qty Delta"] # a negative number
+            # # print("=====")
+            # # print(f"Total Consumed today: {run_consumed}")
+            # # print("=====")
+            
+            # #calculate the remaining quantity of items left in the lot
+            # qty_bought = masked_lots.loc[masked_lots["Purchase_ID"]==lotID,"Quantity Bought"].iloc[0]
+            # current_consumed = row["Qty Delta"]  #also a negative number
+            # qty_remaining = qty_bought + past_consumed + run_consumed + current_consumed
+
+            # # print(f"Qty remaining {qty_remaining} for {lotID}")
+            # #determine how to process:
+            # if qty_remaining >= 0: # Current lot meets the demand
+            #     if qty_remaining == 0: # Special case: last one in the lot, turn the lot to exhausted
+            #         active_lots_df.loc[active_lots_df["Purchase_ID"] == lotID, "Status"] = "Exhausted"
+            #     #append the consumption to the production_log
+            #     row_dict = row.to_dict()
+            #     row_dict["Purchase_ID"] = lotID
+            #     row_dict["Cost"] = active_lots_df.loc[active_lots_df["Purchase_ID"]== lotID,"Price (each)"].iloc[0]
+
+            #     new_prod_list_dicts.append(row_dict) #allows us to update quantity consumed by total in QTy Delta
+            #     break
+            # else:       #Special Case: the math says there isn't enough here to fill production (i.e. a single unit), the lot must be erroneously active; change and repeat loop
+            #     active_lots_df.loc[active_lots_df["Purchase_ID"] == lotID, "Status"] = "Exhausted"
 
 
     if new_prod_list_dicts:
@@ -337,7 +381,7 @@ def expand_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataF
     production_lots = finished_goods_df.copy()
     production_lots["Qty"] = production_lots["Qty Delta"]
     production_lots["Status"]  = "Active"
-    production_lots = production_lots.drop(columns=["Purchase_ID","Qty Delta"])
+    production_lots = production_lots.drop(columns=["Purchase_ID","Qty Delta","Type"])
 
     return updated_purchase_lots, new_production_log, production_lots
 
@@ -391,6 +435,7 @@ def calc_sales_df(next_Sales_ID: int, sales_df: pd.DataFrame, updated_purchase_l
         exhausted_lots = []
         #Make a dictory of a list of dictionaries of active lots by item: lot_ID as key, qty available as value pair, multiple of them are lists as a value where the key is the item name (omfg. whyyyyy)
         lots_df = lots_df.sort_values(by=col_name, ascending=True)
+
         item_lots = {}
         for _,lot_row in lots_df.iterrows():
             if lot_row["Status"] == "Active":

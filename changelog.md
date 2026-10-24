@@ -195,3 +195,10 @@ No new main features. Back end prep for Purchase /Production logic for cost anal
 * 10/9/2026:    To Do - Upstream cast column types on pd.read_csv()
 * 10/21/2026:   Consider production, (stock qty), Master Item Table tables in .zip file?
 -               Inventory largely untested. Will wish to see how it iteracts with program.             
+
+# 2.0.3 Cost of Goods Sold BETA - Hotfix
+### Resolved Issues
+* Identified that the Production processing overwrote, not appended, production lots.
+* Identified a bug that caused cascading errors in the Sales data.
+
+

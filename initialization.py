@@ -47,9 +47,9 @@ def initialize_outputs(args):
     inv_ledger_headers = ["Run_ID","Timestamp","Date of Inventory","Inventory Activity","Item", "Purchase_ID", "Batch_ID", "Qty in Stock", "Cost"]
     purch_ledger_headers = [ "Purchase_ID", "Timestamp","Date of Purchase", "Invoice / Purchase Orders","Item","Quantity Bought","Cost","Price (each)","Subtotal","Status"]
     prod_ledger_headers = ["Batch_ID","Timestamp","Date of Production", "Item", "Purchase_ID", "Type", "Qty Delta", "Cost"]
-    sales_headers = ["Sales_ID","Timestamp","Event_ID","Date of Sales","Event Name","Item","Subcategory", "Qty Sold", "Cost (ea)","Purchase_ID", "Batch_ID"]
+    sales_headers = ["Sales_ID","Timestamp","Event_ID","Date of Sales","Event Name","Item","Subcategory", "Qty Sold", "Purchase_ID", "Batch_ID", "Cost (ea)"]
     events_headers = ["Event_ID","Timestamp","Date of Sales","Event Name","Location (City)", "Total Sales($)","(Total) Tabling and Additional Costs ($)","Event Notes (weather, etc)"]
-    production_lots_headers = ["Timestamp","Date of Production","Batch_ID","Item","Qty","Cost", "Status"]
+    production_lots_headers = ["Timestamp","Date of Production","Batch_ID","Item","Cost","Qty", "Status"]
 
     # Check for output files. If they do not exist, set them up, otherwise skip.
     # Do we want a sys.exit(0) here, since initialization will be writing data?
