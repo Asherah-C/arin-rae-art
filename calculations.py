@@ -179,7 +179,7 @@ def unique_dates(ledger_type:str, dataframe: pd.DataFrame) ->pd.DataFrame:
 
     return dates_df
 
-def expand_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataFrame, expanded_prod_df: pd.DataFrame, lots: pd.DataFrame, batch_start_num: int) -> tuple[pd.DataFrame,pd.DataFrame,pd.DataFrame]:
+def expand_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataFrame, expanded_prod_df: pd.DataFrame, lots: pd.DataFrame, batch_start_num: int) -> tuple[dict,pd.DataFrame,pd.DataFrame]:
     new_ledger = unprocessed_df.copy()
 
     new_ledger["Qty Delta"] = pd.to_numeric(new_ledger["Qty Delta"], errors="coerce").fillna(0)
@@ -236,9 +236,9 @@ def expand_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataF
     
     active_lots_df = lots[lots["Status"]=="Active"].copy() #what we have purchased for use with active lots
 
-    print("PRINTING ACTIVE LOTS:")
-    print(active_lots_df)
-    active_lots_df.to_csv("active_lots_df.csv", header=True, index=False,mode='w')
+    # print("PRINTING ACTIVE LOTS:")
+    # print(active_lots_df)
+    # active_lots_df.to_csv("active_lots_df.csv", header=True, index=False,mode='w')
     active_lots_df["Purchase_ID"] = pd.to_numeric(active_lots_df["Purchase_ID"], errors='coerce').astype('Int64')
 
     production_log = expanded_prod_df.copy() #historical log of what we've made in the past
@@ -344,15 +344,9 @@ def expand_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataF
     if new_prod_list_dicts:
         new_production_log = pd.DataFrame(new_prod_list_dicts)
 
-    # print("Printing active_los_df:")
-    # print(active_lots_df)
-    #make a status map of everything changed in production run
-    status_map = active_lots_df.set_index("Purchase_ID")["Status"]
-
-    # After running all of production, update statuses of the lots in the purchases ledger.
-    updated_purchase_lots = lots.copy()
-    updated_purchase_lots["Purchase_ID"] = pd.to_numeric(updated_purchase_lots["Purchase_ID"],errors='coerce')
-    updated_purchase_lots["Status"] = updated_purchase_lots["Purchase_ID"].map(status_map).fillna(updated_purchase_lots["Status"])
+    
+    # make a status map of every purchse_id changed during production run; this will be fed into the end processing for overwriting purchases
+    changed_purch_map = active_lots_df.set_index("Purchase_ID")["Status"].to_dict()
                     
     finished_goods_df = pd.DataFrame({
         "Timestamp": single_units["Timestamp"],
@@ -383,9 +377,9 @@ def expand_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataF
     production_lots["Status"]  = "Active"
     production_lots = production_lots.drop(columns=["Purchase_ID","Qty Delta","Type"])
 
-    return updated_purchase_lots, new_production_log, production_lots
+    return changed_purch_map, new_production_log, production_lots
 
-def calc_sales_df(next_Sales_ID: int, sales_df: pd.DataFrame, updated_purchase_lots: pd.DataFrame, updated_production_lots: pd.DataFrame, sales_history_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def calc_sales_df(next_Sales_ID: int, sales_df: pd.DataFrame, updated_purchase_lots: pd.DataFrame, updated_production_lots: pd.DataFrame, sales_history_df: pd.DataFrame) -> tuple[pd.DataFrame, dict, dict]:
     sales_df_temp = sales_df.copy()
     sales_df_temp["Date_dt"] = pd.to_datetime(sales_df_temp["Date of Sales"])
 
@@ -402,7 +396,7 @@ def calc_sales_df(next_Sales_ID: int, sales_df: pd.DataFrame, updated_purchase_l
     sales_updated_production_lots = updated_production_lots.copy()
 
 
-    def stock_depletion(category,updated_lots: pd.DataFrame, sales_df: pd.DataFrame, sales_history_df: pd.DataFrame) ->tuple[list[dict], pd.DataFrame]:
+    def stock_depletion(category,updated_lots: pd.DataFrame, sales_df: pd.DataFrame, sales_history_df: pd.DataFrame) ->tuple[list[dict], dict]:
         #set column name to be called
         if category == "Sticker":
             col_name = "Purchase_ID"
@@ -498,7 +492,7 @@ def calc_sales_df(next_Sales_ID: int, sales_df: pd.DataFrame, updated_purchase_l
 
                     # otherwise, ID gets depleted by qty_needed. Turn Status to Exhausted and subtract quantity needed by qty in stock in the lot.
                     qty_needed = qty_needed - current_qty
-                    exhausted_lots.append(current_ID)
+                    exhausted_lots.append(current_ID)                                                                   #   can change this to a list of exhausted lots from sales
                     active_lots.pop(0)
 
                     #append the purchase fulfillent for this purchase_ID into the sales_by_lot dataframe
@@ -508,22 +502,26 @@ def calc_sales_df(next_Sales_ID: int, sales_df: pd.DataFrame, updated_purchase_l
                         "Qty": current_qty
                     })
         #update the lots statii
-        lots_df.loc[lots_df[col_name].isin(exhausted_lots),"Status"] = "Exhausted"
+
+       
+        changed_lots = {}                                                                   # ... to the below for loop in order to make sure the shape of dict[id] =status is retained;
+        for each_lot in exhausted_lots:
+            changed_lots[each_lot] = "Exhausted"                                            # Sales currently only exhausts
 
         #bring forward the costs of each thing sold byy id
         cost_map = updated_lots.set_index(col_name)["Cost"].to_dict()
         for row in sales_by_lot:
             row["Cost"] = cost_map.get(row[col_name],0.0)
 
-        return sales_by_lot, lots_df
+        return sales_by_lot, changed_lots
 
     if not sticker_sales.empty:
         
-        stickers_by_lot, sales_updated_purchase_lots = stock_depletion("Sticker", sales_updated_purchase_lots, sticker_sales, sales_history_df)
+        stickers_by_lot, sales_updated_purchase_lots_dict = stock_depletion("Sticker", sales_updated_purchase_lots, sticker_sales, sales_history_df)
     
 
     if not production_sales.empty:
-        produced_sales_by_lot, sales_updated_production_lots = stock_depletion("Produced",updated_production_lots, production_sales, sales_history_df)
+        produced_sales_by_lot, sales_updated_production_lots_dict = stock_depletion("Produced",updated_production_lots, production_sales, sales_history_df)
   
     sales_by_lot = stickers_by_lot + produced_sales_by_lot
     sales_by_lot = pd.DataFrame(sales_by_lot)
@@ -537,7 +535,7 @@ def calc_sales_df(next_Sales_ID: int, sales_df: pd.DataFrame, updated_purchase_l
         
     sales_updated_purchase_lots.rename(columns={"Qty": "Quantity Bought"}, inplace=True)
     #we now need to return the sales data, along with the most updated purchase and production lots
-    return sales_by_lot, sales_updated_purchase_lots, sales_updated_production_lots
+    return sales_by_lot, sales_updated_purchase_lots_dict, sales_updated_production_lots_dict
 
 def calc_curr_from_sales (sales_df: pd.DataFrame, current_df: pd.DataFrame):
     #    1. Pre-aggregate sales if sales_df can have multiple rows per ID
@@ -584,3 +582,206 @@ def calc_curr_from_sales (sales_df: pd.DataFrame, current_df: pd.DataFrame):
     final_cols = ["Timestamp","Date of Inventory","Inventory Activity","Item","Style","Subcategory","Category","Final Product","Input Product","Purchase_ID","Batch_ID","Qty in Stock","Cost"]
 
     return new_curr[final_cols]
+
+def calc_cannibalism(args, cannibal_df: pd.DataFrame) -> tuple(pd.DataFrame, pd.DataFrame, pd.DataFrame, dict, pd.DataFrame, dict):              #   Currently, the shape of cannibal_df may not fully correctly reflect the input data, so we should expect bugs andd/or errors at this time
+    expanded_prod_ledger_path = args.expanded_production
+    purch_ledger_path = args.purchases_output
+    production_lots_path = args.prod_lots_output
+    current_inventory_path = args.current_inv
+    master_table_output = args.master_table_output
+    bill_of_mats = args.bill_of_mats
+
+    production_lots = pd.read_csv(production_lots_path)
+
+    active_lots = production_lots[production_lots["Status"] == "Active"].sort_values("Batch_ID",ascending=True)
+
+    #after pulling the FIFO active rows out, we convert it to a dictionary:
+    if not active_lots.empty:
+        lots_dict = {}
+        for _,row in active_lots.iterrows():
+            batch_id = row["Batch_ID"]
+            item_made = row["Item"]
+            initial_status = row["Status"]
+
+            if not item_made in lots_dict:
+                lots_dict[item_made] = {}
+            
+            lots_dict[item_made][batch_id] = initial_status
+
+    #now we make another dictionary map of how each active lot was made, so we can reverse the process
+    production_ledger = pd.read_csv(expanded_prod_ledger_path)
+    production_ledger["Date of Production"] = pd.to_datetime(production_ledger["Date of Production"], errors="coerce")
+    production_ledger["Timestamp"] = pd.to_datetime(production_ledger["Timestamp"], errors="coerce")
+    prod_dict = {}
+
+    purch_id_dict = {}                                                  # we'll need to assemble a dictionary of purchase_IDs to make sure they're active
+    changed_prod_list = []                                              # and one of changed production
+    cannibalism_dict = {}                                               # and a map of what production ids we assigned in order to save it to our cannibalism ledger output
+
+    if lots_dict and not production_ledger.empty:
+        for item,_ in lots_dict.items():
+            for batch in lots_dict[item].keys():
+                if not batch in prod_dict:
+                    prod_dict[batch] = production_ledger[production_ledger["Batch_ID"] == batch]
+
+    
+    for _,row in cannibal_df.iterrows():                                #Step 1: Identify Item being cannibalized
+        item_cannibalized = row["Input Item"]
+        qty_cannibalized = row["Qty"]
+        cannibal_id = row["Cannibal_ID"]
+        date = pd.to_datetime(row["Date of Cannibalization"])
+        timestamp = pd.to_datetime(row["Timestamp"])
+        if not cannibal_id in cannibalism_dict:
+            cannibalism_dict[cannibal_id] = {}
+
+        
+        if not item_cannibalized in lots_dict:                          # Step 2: Determine if cannibalization is possible
+            print(f"ERROR: Cannibalization Not Possible for: {item_cannibalized}")
+            print(f"REASON: {item_cannibalized} has no active lots available to cannibalize.")
+            print("Exiting program.")
+            raise ValueError
+        
+        
+        active_lot_found = False
+        for batch, status in lots_dict[item_cannibalized].items():      #Step 3: Unwork Production
+            if status == "Active":                                      #find the earliest active lot from production
+                active_lot_found= True                                  
+                batch_df = prod_dict[batch].copy()                      # copy the dataframe to un-work it
+                for idx,row in batch_df.iterrows():
+                    if row["Type"] == "Consumption":                   
+                        purch_id = row["Purchase_ID"]
+                        qty = - row["Qty Delta"]
+                        if not purch_id in purch_id_dict:
+                            purch_id_dict[purch_id] = 0
+                        purch_id_dict[purch_id] += qty                  # save the purchase_id changes to a diction to make sure it is updated
+                        batch_df.at[idx,"Type"] = "Return to Stock"
+                        batch_df.at[idx,"Qty Delta"]  = qty
+                        batch_df.at[idx, "Date of Production"] = date
+                        batch_df.at[idx, "Timestamp"] = timestamp
+                    elif row["Type"] == "Production":
+                        qty = - row["Qty Delta"]
+                        batch_df.at[idx,"Type"] = "Cannibalized"
+                        batch_df.at[idx,"Qty Delta"]  = qty
+                        batch_df.at[idx, "Date of Production"] = date
+                        batch_df.at[idx, "Timestamp"] = timestamp
+                        cannibalism_dict[cannibal_id]["Input Item ID"] = batch
+                    else:
+                        continue
+                changed_prod_list.append(batch_df)
+                lots_dict[item_cannibalized][batch] = "Cannibalized"      # change status and break out of loop, item has been cannibalized
+                break
+            else:
+                continue
+
+        if not active_lot_found:
+            print("ERROR: Insufficient active lots available to complete all requested cannibalizations. Action halted without saving.")
+            print(f"Cannibalization failed at:")
+            print(f"Item: {item_cannibalized}")
+            print(f"Cannibal_ID: {cannibal_id}")
+            print(f"Date of Cannibalization: {date}")
+            raise ValueError
+
+    #   At this point, we have the following:
+        #   changed_prod_list: a list of changed batches ready for appending into the expanded production file, these reverse out the original production; 
+        #   cannibalism_dict: a half-full dictionary to add granulairty to the output cannibalism ledger; it only has what production_ids we've cannibalized at this point; this also is a reference to change the current inventory of touched production_IDs
+        #   purch_id_dict: a dictionary of all purchase_ids touched (added/incremented), so we can turn on and/or increment up the quantities in stock
+
+
+    #   Things still undone before we can push the expanded production on the output items:
+    #   We need to concate and save unworked rows into the expanded production ledger dataframe, so it can be used as a basis for recounting production
+    changed_production_df = pd.concat(changed_prod_list)
+    updated_prod_ledger_after_cannibal_step_1 = pd.concat([changed_production_df, production_ledger])     # Ready for loading into expand_prod_df function
+
+    #   We need to verify Active status for each purchase_id touched
+    purch_ledger_df = pd.read_csv(purch_ledger_path)
+    purch_ledger_df.loc[purch_ledger_df["Purchase_ID"].isin(purch_id_dict.keys()),"Status"] = "Active"
+
+    #   we need to update the qty in current inventory for each purchase_id and production_id, happens in processing
+        # current_inv_df = pd.read_csv(current_inventory_path)
+        # current_inv_df["Qty in Stock"] += current_inv_df["Purchase_ID"].map(purch_id_dict).fillna(0)
+
+        # exhausted_batches_to_update = []
+        # for cannibal_id, inner_dict in cannibalism_dict.items():
+        #     for __, batch in inner_dict.items():                        #   we don't need to define input vs output here because we only have input at this point
+        #         exhausted_batches_to_update.append(batch)
+
+        # current_inv_df.loc[current_inv_df["Batch_ID"].isin(exhausted_batches_to_update), "Qty in Stock"] = 0
+    
+    #   we need to create a temporary dataframe that replicates the production input ledger using output items in order to feed the calculation function effectively
+    master_table_df = pd.read_csv(master_table_output)              #   using the master item table to fill blanks in the cannibal_items_made_dict
+    master_table_dict = {}
+    for _, row in master_table_df.iterrows():
+        master_table_dict[row["Key"]] = {
+            "Style" : row["Style"],
+            "Subcategory" : row["Subcategory"]
+        }
+
+    cannibal_items_made_dict = {}
+    for _, row in cannibal_df.iterrows():
+        if not row["Cannibal_ID"] in cannibal_items_made_dict:
+            cannibal_items_made_dict[row["Cannibal_ID"]] = {
+                "Timestamp" : row["Timestamp"],
+                "Date of Production" : row["Date of Cannibalization"],
+                "Item" : row["Output Item"],
+                "Style" : master_table_dict[row["Output Item"]]["Style"],
+                "Subcategory" : master_table_dict[row["Output Item"]]["Subcategory"],
+                "Qty Delta" : row["Qty"]
+            }
+        
+    cannibal_items_made_df = pd.DataFrame(list(cannibal_items_made_dict.values())).sort_values("Date of Production", ascending=True)    #   This gets loaded into expand_prod_df
+    bill_of_mats_df = pd.read_csv(bill_of_mats)
+        #   we need to determine the current prod_id max so we can feed it to the calculation function effectively
+    next_prod_batch_id = production_ledger["Batch_ID"].max() + 1
+
+    
+    changed_purchase_lots_dict, new_production_log, prod_lots_append = expand_production_df(bill_of_mats_df, cannibal_items_made_df, updated_prod_ledger_after_cannibal_step_1, purch_ledger_df, next_prod_batch_id)
+    breakpoint()
+    #   when we push the output item production:
+    #   we need to review the dataframe to find the new, associated output item and capture the production_id and record it
+    new_outputs_df = new_production_log.loc[(new_production_log["Batch_ID"] >= next_prod_batch_id) & (new_production_log["Type"] == "Production"), ["Batch_ID","Item"]].reset_index(drop=True)
+
+
+    
+    #   add the above to the cannibalism dictionary
+    for idx, (cannibal_id, inner_dict) in enumerate(cannibalism_dict.items()):
+        output_batch_id = new_outputs_df.loc[idx,"Batch_ID"]
+        cannibalism_id_item = new_outputs_df.loc[idx,"Item"]
+        cannibalism_dict[cannibal_id]["Output Item ID"] = output_batch_id
+   
+    #   add the cannibalism dictionary to the input dataframe (becoming the format for the output dataframe), reordering the columns before...
+    cannibal_output_df = cannibal_df.copy()
+    cannibal_output_df["Input Batch ID"] = None
+    cannibal_output_df["Output Batch ID"] = None
+
+    for idx, row in cannibal_output_df.iterrows():
+        cannibal_id = row["Cannibal_ID"]
+
+        if cannibal_id in cannibalism_dict:
+            cannibal_output_df.at[idx,"Input Batch ID"] = cannibalism_dict[cannibal_id]["Input Item ID"]
+            cannibal_output_df.at[idx, "Output Batch ID"] = cannibalism_dict[cannibal_id]["Output Item ID"]
+
+    reordered_output_columns = [
+        "Cannibal_ID",
+        "Timestamp",
+        "Date of Cannibalization",
+        "Input Item",
+        "Input Batch ID",
+        "Output Item",
+        "Output Batch ID",
+        "Qty"
+    ]
+
+    cannibal_output_df= cannibal_output_df[reordered_output_columns]
+
+    #   Finally, we make aproduction lots map by touched lots earlier
+    cannibalized_prod_lots_dict = {}
+    for cannibal_id,inner_dict in cannibalism_dict.items():
+        if "Input Item ID" in inner_dict:
+            cannibalized_prod_lots_dict[inner_dict["Input Item ID"]]= "Cannibalized"
+
+    # Before sending the production log out, we need to marry it to the cannibalized log
+
+    cannibal_prod_log = pd.concat([changed_production_df,new_production_log],  ignore_index=True)
+    cannibal_prod_log["Purchase_ID"] = pd.to_numeric(cannibal_prod_log["Purchase_ID"].replace(["","nan", "NaN", "<NA>"],pd.NA), errors= "coerce").astype("Int64")
+
+    return cannibal_output_df, cannibal_prod_log, changed_purchase_lots_dict, prod_lots_append, cannibalized_prod_lots_dict

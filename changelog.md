@@ -182,7 +182,7 @@ No new main features. Back end prep for Purchase /Production logic for cost anal
 * Removed an errroneous args flag (raw-mats-ledger).
 
 ### Under the Hood
-* Eliminated several functions through streamlining, many of which caused errors in
+* Eliminated several functions through streamlining, many of which caused errors
 * Removed validations.py from program. No longer used.
 
 ### Known Bugs and Issues
@@ -201,4 +201,23 @@ No new main features. Back end prep for Purchase /Production logic for cost anal
 * Identified that the Production processing overwrote, not appended, production lots.
 * Identified a bug that caused cascading errors in the Sales data.
 
+# 2.1.0 Cannibalism Patch
+### New Features
+* Cannibalism Activity is now in live.
+    - Input form within Google Sheets which uses in-place data validation and active filtering to restrict cannibalism into "upsell" only activities by style and category.
+    - Input form is loaded into Ingestion ledger using Javascript Macro
+    - Within the program, Cannibalism is treated as a two-part production activity; returning to stock and cannibalizing original finished item, then running a new production for the output item.
+    - Only known bug is that Current Inventory output file does not currently list the cannibalized final product as such, but the qty available is accurately reflected in the activity.
 
+### Under the Hood
+*   Beginning to streamline processes to reduce memory usage, as row numbers grow.
+    - Using dictionaries instead of dataframes when statuses need to be updated.
+
+### Dev Log
+* 10/9/2026:    To Do - Upstream cast column types on pd.read_csv()
+* 10/21/2026:   Consider production, (stock qty), Master Item Table tables in .zip file?
+-               Inventory largely untested. Will wish to see how it iteracts with program.
+* 11/6/2026:
+-               To Do - Add cannibalism to tests.py for peace of mind.
+-               To Do - Square & Etsy Sales Data
+-               To Do - Automation - Pull raw files directly

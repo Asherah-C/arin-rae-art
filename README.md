@@ -35,6 +35,7 @@ python3 main.py [flag] (option:path)
 --production-ledger-path        "Inventory - FACT - Production Ledger.csv"          Source Production Ledger (unexpanded)
 --bill-of-mats                  "Inventory - DIM - Production Table.csv"            Source Bill of Materials used in Production (Pivotted)
 --raw-sales-path                "Inventory - FACT - Historical Sales.csv"           Source Event Sales (Pivotted)
+--cannibal-ledger-input         "Inventory - Fact - Cannibalism.csv"                Source Cannibalism Activity
 ### Output Files
 --expanded-production           "FACT - Production Ledger.csv"                      Output Expanded Production Ledger
 --inv-history                   "FACT - Inventory History.csv"                      Output unpivotted Inventory history
@@ -44,5 +45,6 @@ python3 main.py [flag] (option:path)
 --current-inv                   "DIM - Current Inventory.csv"                       Output Current Inventory (Merged and Calculated)
 --master-table-output           "DIM-Master Item Table.csv"                         Output Master Item Table copy
 --production-lots               "DIM - Production Lots.csv"                         Output Table of Production Lots and Status
+--cannibal-ledger-output        "FACT - Cannibalism Ledger.csv"                     Output Table for Cannibalism activity
 ### Output Directory
 --image-dir                     "Imaged Data"                                       Directory where .zipp images of output files are stored
