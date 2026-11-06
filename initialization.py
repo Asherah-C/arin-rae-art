@@ -41,6 +41,7 @@ def initialize_outputs(args):
     stock_levels_path = args.stock_levels
     stock_exceptions_path = args.stock_exceptions
     production_lots_path = args.prod_lots_output
+    cannibal_ledger_out_path = args.cannibal_ledger_output
     image_dir = args.image_dir
 
 
@@ -50,6 +51,7 @@ def initialize_outputs(args):
     sales_headers = ["Sales_ID","Timestamp","Event_ID","Date of Sales","Event Name","Item","Subcategory", "Qty Sold", "Purchase_ID", "Batch_ID", "Cost (ea)"]
     events_headers = ["Event_ID","Timestamp","Date of Sales","Event Name","Location (City)", "Total Sales($)","(Total) Tabling and Additional Costs ($)","Event Notes (weather, etc)"]
     production_lots_headers = ["Timestamp","Date of Production","Batch_ID","Item","Cost","Qty", "Status"]
+    cannibalism_output_headers = ["Cannibal_ID","Timestamp","Date of Cannibalization","Input Item","Input Batch ID","Output Item","Output Batch ID","Qty"]
 
     # Check for output files. If they do not exist, set them up, otherwise skip.
     # Do we want a sys.exit(0) here, since initialization will be writing data?
@@ -116,6 +118,13 @@ def initialize_outputs(args):
 
     else:
         print(f"{production_lots_path} already exists.")
+
+    if not os.path.exists(cannibal_ledger_out_path):
+        cannibalism_df = pd.DataFrame(columns=cannibalism_output_headers)
+        cannibalism_df.to_csv(cannibal_ledger_out_path, index=False)
+        print(f"{cannibal_ledger_out_path} initialized.")
+    else:
+        print(f"{cannibal_ledger_out_path} already exists.")
 
     os.makedirs(image_dir,exist_ok=True)
     print(f"Created directed for zip files as {image_dir}/")
