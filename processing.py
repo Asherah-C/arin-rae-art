@@ -220,10 +220,10 @@ def find_unprocessed_data(args) -> list[pd.Timestamp, pd.Timestamp, dict]:
                     print(loaded_dict)
                     print("======= Activity Dict =====")
                     print(activity_dict)
-                    breakpoint()
+
                     print(f"Running {activity} data for {date} in merge_raw_data_for processing....")
                     activity_to_load_df, updated_purchase_lots_dict, prepped_prod_df, production_lots_append, updated_prod_lots_dict, cannibal_output, prepped_sales_df = merge_raw_data_for_processing(args,df_to_load)                         #   Need output df for cannibalization here
-                    breakpoint()
+
                     saving_files(args, activity_to_load_df, backdated_data, activity_dict, prepped_prod_df, updated_purchase_lots_dict, production_lots_append, updated_prod_lots_dict, cannibal_output, prepped_sales_df, date, activity)        #   Need above output as input here
 
 
@@ -371,7 +371,7 @@ def merge_raw_data_for_processing(args, loaded_dict: dict[str:pd.DataFrame]) -> 
             prepped_prod_df = prepped.copy()
             prepped = prepped.rename(columns={"Qty Delta":"Qty","Date of Production":"Date"})
             print(f"{len(prepped)} rows of {activity} Data prepared for load:")
-            breakpoint()
+
 
     # Step 2.2a: transform Sales Data
         elif activity == "Sales":
@@ -382,14 +382,6 @@ def merge_raw_data_for_processing(args, loaded_dict: dict[str:pd.DataFrame]) -> 
             sales_history_df = pd.read_csv(events_sales_path)
             next_sales_ID = max(sales_history_df["Sales_ID"], default=0)+1
 
-            # #if production was also run today, use its processed purchase lots instead of the original
-            # if not updated_purchase_lots.empty:
-            #     purch_ledger_df = updated_purchase_lots
-
-            # #Load production lots from most up to date source
-            # if not production_lots_change.empty:
-            #     updated_production_lots = production_lots.copy()
-            # else:
             production_lots_path = args.prod_lots_output
             updated_production_lots = pd.read_csv(production_lots_path)
 
@@ -429,9 +421,6 @@ def populate_inventory_history(args, activity_ledger: pd.DataFrame, backdated_da
     stock_levels_path = args.stock_levels
     stock_exceptions_path = args.stock_exceptions
 
-    # print("Printing Activity Ledger")
-    # print(activity_ledger)
-
     activity_order = ["Inventory","Purchase","Production", "Cannibalization","Sales"]
 
     #Create a List of Dates to Parse over from the full activity log
@@ -444,11 +433,6 @@ def populate_inventory_history(args, activity_ledger: pd.DataFrame, backdated_da
     activity_ledger["Date"] = pd.to_datetime(activity_ledger["Date"])
     current_inventory = pd.read_csv(current_inventory_path)
 
-    # print("Printing Current Inventory path")
-    # print (current_inventory_path)
-
-    # print("Printing activity ledger")
-    # print(activity_ledger)
     #Guards against Column errors
     for col in ["Purchase_ID", "Batch_ID"]:
         if col not in activity_ledger.columns:
@@ -488,34 +472,23 @@ def populate_inventory_history(args, activity_ledger: pd.DataFrame, backdated_da
                 activity_df["Inventory Activity"] = "Hand Count"
                 curr_inv = create_current_from_inv (activity_df)
                 current_inventory = current_inv_enrichment(curr_inv, master_table_path)
-                # prod  = production_query(enriched,stock_levels_path,stock_exceptions_path)
-                # finished_curr = purchase_query(prod)
-                # current_inventory = finished_curr
                 append_to_inv(inv_history_path,current_inventory)
             elif activity == "Purchase":
                 activity_df = activity_df.rename(columns={"Qty":"Quantity Bought","Date": "Date of Purchase"})
-                #new code line to populate purchases
-                # print("Activity dataframe:")
-                # print(activity_df)
-                # print("Current Inventory:")
-                # print(current_inventory)
+
                 curr_inv = calc_current_from_purch(activity_df,current_inventory)
                 current_inventory = current_inv_enrichment(curr_inv, master_table_path)
-                # prod  = production_query(enriched,stock_levels_path,stock_exceptions_path)
-                # finished_curr = purchase_query(prod)
-                # current_inventory = finished_curr
+
                 append_to_inv(inv_history_path,current_inventory)
             elif activity == "Production":
                 activity_df = activity_df.rename(columns={"Qty":"Qty Delta","Date": "Date of Production"})
                 curr_inv = update_current_from_prod(activity_df,current_inventory)
                 current_inventory = current_inv_enrichment(curr_inv, master_table_path)
-                # prod  = production_query(enriched,stock_levels_path,stock_exceptions_path)
-                # finished_curr = purchase_query(prod)
-                # current_inventory = finished_curr
+
                 append_to_inv(inv_history_path,current_inventory)
             elif activity == "Cannibalization":                                                                         #   2 Options: Cannibalism is unique vs Cannibalism is special form of production. If production, we just need to ensure output shape aligns with input into production-> curr inv
                 activity_df = activity_df.rename(columns={"Qty":"Qty Delta","Date": "Date of Production"})             #   Shape Changes? Or do we push the expanded_production
-                breakpoint()
+
                 curr_inv =  update_current_from_prod(activity_df,current_inventory)
                 current_inventory = current_inv_enrichment(curr_inv,master_table_path)
                 append_to_inv(inv_history_path, current_inventory)  
@@ -523,9 +496,7 @@ def populate_inventory_history(args, activity_ledger: pd.DataFrame, backdated_da
                 activity_df = activity_df.rename(columns={"Qty":"Qty Sold","Date": "Date of Sales"})
                 curr_inv = calc_curr_from_sales(activity_df,current_inventory)
                 current_inventory = current_inv_enrichment(curr_inv, master_table_path)
-                # prod  = production_query(enriched,stock_levels_path,stock_exceptions_path)
-                # finished_curr = purchase_query(prod)
-                # current_inventory = finished_curr
+
                 append_to_inv(inv_history_path,current_inventory)
             else:
                 print(f"{activity} Not Recognized. Skipping....")
@@ -536,7 +507,7 @@ def populate_inventory_history(args, activity_ledger: pd.DataFrame, backdated_da
 
 # Populate the Power-BI ledgers with data
 def append_ledgers(args, activity, activity_dict, prepped_prod_df: pd.DataFrame, updated_purchase_lots_dict: dict, production_lots: pd.DataFrame, updated_prod_lots_dict: dict,cannibalism_to_output: pd.DataFrame, prepped_sales_df: pd.DataFrame):
-    #  append_ledgers(args, activity, activity_dict, prepped_prod_df, changed_prod_df, updated_purchase_lots_dict, production_lots_append, updated_prod_lots_dict, prepped_sales_df)
+    
     expanded_prod_ledger_path = args.expanded_production 
     purch_ledger_path = args.purchases_output
     events_sales_path = args.sales_output
@@ -594,7 +565,7 @@ def append_ledgers(args, activity, activity_dict, prepped_prod_df: pd.DataFrame,
         run_production_changes(args, prepped_prod_df, production_lots, updated_purchase_lots_dict)
 
     if activity == "Cannibalization":
-        breakpoint()
+
         #   for cannibalism, do we need to append AND write, strictly write, or just append. We have changed production statuses (new function) AND added new rows in production (like in production), and need to change statuses in purchases (like in sales)
         if isinstance(cannibalism_to_output,pd.DataFrame) and not cannibalism_to_output.empty:
             # Step 1 Append the Cannibalism Ledger

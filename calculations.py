@@ -109,17 +109,13 @@ def calc_current_from_purch(purch:pd.DataFrame, curr_inv:pd.DataFrame) -> pd.Dat
     if "Timestamp" in unprocessed.columns:
             unprocessed["Timestamp"] = pd.to_datetime(unprocessed["Timestamp"], format="mixed", utc=True, errors="coerce").dt.tz_localize(None)
 
-    # print("curr_inv:")
-    # print(curr_df)
-
     latest_purch_date = unprocessed["Date_dt"].max()
 
     # Sum on Purchase_ID to maintaian distinct costs, needs to pull every column needed in aggregation. It's gonna be given the Date and make the location
     purch_summed_df = unprocessed.groupby(["Timestamp","Purchase_ID", "Item", "Cost"], as_index=False)["Quantity Bought"].sum()
-    # print("purch_summed")
-    # print(purch_summed_df)
+   
     #because purchase_IDs will be unique, we want both what current inventory has and what we have.
-    
+
     curr_df["Cost"] = pd.to_numeric(curr_df["Cost"], errors="coerce")
     curr_df["Purchase_ID"]  = pd.to_numeric(curr_df["Purchase_ID"], errors='coerce')
     purch_summed_df["Cost"] = pd.to_numeric(purch_summed_df["Cost"], errors='coerce')
@@ -230,15 +226,9 @@ def expand_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataF
     })
 
     raw_mats_df = pd.concat([components_df,art_df],ignore_index=True)
-    #pull active lots from output purchase ledger
-    # print("Printing lots from purchases:")
-    # print(lots)
     
+    #pull active lots from output purchase ledger   
     active_lots_df = lots[lots["Status"]=="Active"].copy() #what we have purchased for use with active lots
-
-    # print("PRINTING ACTIVE LOTS:")
-    # print(active_lots_df)
-    # active_lots_df.to_csv("active_lots_df.csv", header=True, index=False,mode='w')
     active_lots_df["Purchase_ID"] = pd.to_numeric(active_lots_df["Purchase_ID"], errors='coerce').astype('Int64')
 
     production_log = expanded_prod_df.copy() #historical log of what we've made in the past
@@ -273,10 +263,6 @@ def expand_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataF
                     raise ValueError
             #identify the current FIFO active Lot
             lotID = masked_lots.iloc[0]["Purchase_ID"]
-
-            # print("=====")
-            # print(f"Working production against {lotID}")
-            # print("=====")
             qty_remaining_in_lot = lot_remaining_map.get(lotID, 0)
 
             if qty_remaining_in_lot == 0: # if nothing remains in the lot, exhaust and repeat
@@ -306,41 +292,6 @@ def expand_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataF
             
             current_demand -= units_to_take
 
-            # past_consumed = production_log.loc[production_log["Purchase_ID"]== lotID,"Qty Delta"].sum() #comes as a negative number for consumption!
-
-
-            # # print(f"Total Consumed before today: {past_consumed}")
-
-            # #determine how many have already been used this run
-            # run_consumed = 0
-            # for run in new_prod_list_dicts:
-            #     if run.get("Purchase_ID") == lotID:
-            #         run_consumed += run["Qty Delta"] # a negative number
-            # # print("=====")
-            # # print(f"Total Consumed today: {run_consumed}")
-            # # print("=====")
-            
-            # #calculate the remaining quantity of items left in the lot
-            # qty_bought = masked_lots.loc[masked_lots["Purchase_ID"]==lotID,"Quantity Bought"].iloc[0]
-            # current_consumed = row["Qty Delta"]  #also a negative number
-            # qty_remaining = qty_bought + past_consumed + run_consumed + current_consumed
-
-            # # print(f"Qty remaining {qty_remaining} for {lotID}")
-            # #determine how to process:
-            # if qty_remaining >= 0: # Current lot meets the demand
-            #     if qty_remaining == 0: # Special case: last one in the lot, turn the lot to exhausted
-            #         active_lots_df.loc[active_lots_df["Purchase_ID"] == lotID, "Status"] = "Exhausted"
-            #     #append the consumption to the production_log
-            #     row_dict = row.to_dict()
-            #     row_dict["Purchase_ID"] = lotID
-            #     row_dict["Cost"] = active_lots_df.loc[active_lots_df["Purchase_ID"]== lotID,"Price (each)"].iloc[0]
-
-            #     new_prod_list_dicts.append(row_dict) #allows us to update quantity consumed by total in QTy Delta
-            #     break
-            # else:       #Special Case: the math says there isn't enough here to fill production (i.e. a single unit), the lot must be erroneously active; change and repeat loop
-            #     active_lots_df.loc[active_lots_df["Purchase_ID"] == lotID, "Status"] = "Exhausted"
-
-
     if new_prod_list_dicts:
         new_production_log = pd.DataFrame(new_prod_list_dicts)
 
@@ -369,8 +320,6 @@ def expand_production_df(bill_of_mats_df: pd.DataFrame, unprocessed_df: pd.DataF
     new_production_log = pd.concat([new_production_log,finished_goods_df], ignore_index=True)
     new_production_log = new_production_log[["Batch_ID","Timestamp","Date of Production","Item","Purchase_ID","Type","Qty Delta","Cost"]]
 
-    # print("NEW PRODUCTION LOG:")
-    # print(new_production_log)
     #prep new production lots & format
     production_lots = finished_goods_df.copy()
     production_lots["Qty"] = production_lots["Qty Delta"]
@@ -541,8 +490,6 @@ def calc_curr_from_sales (sales_df: pd.DataFrame, current_df: pd.DataFrame):
     #    1. Pre-aggregate sales if sales_df can have multiple rows per ID
     sales_cols = ["Timestamp", "Date of Sales", "Activity", "Qty Sold"]
 
-    # print("Printing sales to calc current inv")
-    # print(sales_df)
     sales_df["Batch_ID"] = pd.to_numeric(sales_df["Batch_ID"],errors='coerce')
     sales_df["Purchase_ID"] = pd.to_numeric(sales_df["Purchase_ID"], errors='coerce') # error here
     current_df["Batch_ID"] = pd.to_numeric(current_df["Batch_ID"],errors='coerce')
@@ -583,7 +530,7 @@ def calc_curr_from_sales (sales_df: pd.DataFrame, current_df: pd.DataFrame):
 
     return new_curr[final_cols]
 
-def calc_cannibalism(args, cannibal_df: pd.DataFrame) -> tuple(pd.DataFrame, pd.DataFrame, pd.DataFrame, dict, pd.DataFrame, dict):              #   Currently, the shape of cannibal_df may not fully correctly reflect the input data, so we should expect bugs andd/or errors at this time
+def calc_cannibalism(args, cannibal_df: pd.DataFrame) -> tuple(pd.DataFrame, pd.DataFrame, pd.DataFrame, dict, pd.DataFrame, dict):             
     expanded_prod_ledger_path = args.expanded_production
     purch_ledger_path = args.purchases_output
     production_lots_path = args.prod_lots_output
@@ -695,17 +642,6 @@ def calc_cannibalism(args, cannibal_df: pd.DataFrame) -> tuple(pd.DataFrame, pd.
     #   We need to verify Active status for each purchase_id touched
     purch_ledger_df = pd.read_csv(purch_ledger_path)
     purch_ledger_df.loc[purch_ledger_df["Purchase_ID"].isin(purch_id_dict.keys()),"Status"] = "Active"
-
-    #   we need to update the qty in current inventory for each purchase_id and production_id, happens in processing
-        # current_inv_df = pd.read_csv(current_inventory_path)
-        # current_inv_df["Qty in Stock"] += current_inv_df["Purchase_ID"].map(purch_id_dict).fillna(0)
-
-        # exhausted_batches_to_update = []
-        # for cannibal_id, inner_dict in cannibalism_dict.items():
-        #     for __, batch in inner_dict.items():                        #   we don't need to define input vs output here because we only have input at this point
-        #         exhausted_batches_to_update.append(batch)
-
-        # current_inv_df.loc[current_inv_df["Batch_ID"].isin(exhausted_batches_to_update), "Qty in Stock"] = 0
     
     #   we need to create a temporary dataframe that replicates the production input ledger using output items in order to feed the calculation function effectively
     master_table_df = pd.read_csv(master_table_output)              #   using the master item table to fill blanks in the cannibal_items_made_dict
@@ -735,7 +671,7 @@ def calc_cannibalism(args, cannibal_df: pd.DataFrame) -> tuple(pd.DataFrame, pd.
 
     
     changed_purchase_lots_dict, new_production_log, prod_lots_append = expand_production_df(bill_of_mats_df, cannibal_items_made_df, updated_prod_ledger_after_cannibal_step_1, purch_ledger_df, next_prod_batch_id)
-    breakpoint()
+
     #   when we push the output item production:
     #   we need to review the dataframe to find the new, associated output item and capture the production_id and record it
     new_outputs_df = new_production_log.loc[(new_production_log["Batch_ID"] >= next_prod_batch_id) & (new_production_log["Type"] == "Production"), ["Batch_ID","Item"]].reset_index(drop=True)
