@@ -5,7 +5,7 @@ import zipfile
 import glob
 
 from transforms import append_to_inv, transform_raw_sales, transform_inv, transform_purchase, transform_production, create_current_from_inv, current_inv_enrichment, backdating_sales_events, transform_events, backdating_purchases, transform_sales_by_lot_df
-from calculations import expand_production_df, calc_current_from_purch, update_current_from_prod, unique_dates, calc_sales_df, calc_curr_from_sales, calc_cannibalism
+from calculations import expand_production_df, calc_current_from_purch, update_current_from_prod, unique_dates, calc_sales_df, calc_curr_from_sales, calc_cannibalism, calc_inventory
 
 ### ----------- ARGS Quick Reference -----------
 #    expanded_prod_ledger_path = args.expanded_production 
@@ -17,7 +17,9 @@ from calculations import expand_production_df, calc_current_from_purch, update_c
 #    master_table_output = args.master_table_output
 #    production_lots_path = args.prod_lots_output
 #    cannibal_input_path = args.cannibal_input
+#    spot_check_input = args.spot_check_input
 
+#    spot_check_output = args.spot_check_output
 #    master_table_path = args.master_item
 #    stock_levels_path = args.stock_levels
 #    stock_exceptions_path = args.stock_exceptions
@@ -41,13 +43,15 @@ def find_unprocessed_data(args) -> list[pd.Timestamp, pd.Timestamp, dict]:
     current_inventory_path = args.current_inv
     image_dir = args.image_dir
     cannibal_ledger_output = args.cannibal_ledger_output
+    spot_check_output = args.spot_check_output
 
     # Raw Data
-    inv_path = args.inventory_path
+    #   inv_path = args.inventory_path
     purchase_path = args.purchases_source
     production_ledger_path = args.production_path
     raw_sales_path = args.sales_source
     cannibal_input_path = args.cannibal_input
+    spot_check_input = args.spot_check_input
 
     #Step 1.1 - Pull DataFrames
     expanded_production_df = pd.read_csv(expanded_prod_ledger_path)
@@ -56,16 +60,19 @@ def find_unprocessed_data(args) -> list[pd.Timestamp, pd.Timestamp, dict]:
     events_sales_df = pd.read_csv(events_sales_path)
     current_inv_df = pd.read_csv(current_inventory_path)
     cannibal_ledger_output_df = pd.read_csv(cannibal_ledger_output)
-    
+    spot_check_output_df = pd.read_csv(spot_check_output)
+
+    raw_spot_check_input_df = pd.read_csv(spot_check_input)
     raw_cannibal_input_df = pd.read_csv(cannibal_input_path)
-    raw_inv_df = pd.read_csv(inv_path)
+    #   raw_inv_df = pd.read_csv(inv_path)
     raw_purch_df = pd.read_csv(purchase_path)
     raw_prod_df = pd.read_csv(production_ledger_path)
     raw_sales_df = pd.read_csv(raw_sales_path)
 
     #Set Date Format correctly
     raw_sales_df["Date of Sales"]= pd.to_datetime(raw_sales_df["Date of Sales"].astype(str).str.strip(), format='%m/%d/%Y')
-    raw_inv_df["Date of Inventory"]= pd.to_datetime(raw_inv_df["Date of Inventory"].astype(str).str.strip(), format='%m/%d/%Y')
+    #   raw_inv_df["Date of Inventory"]= pd.to_datetime(raw_inv_df["Date of Inventory"].astype(str).str.strip(), format='%m/%d/%Y')
+    raw_spot_check_input_df["Date of Inventory"]= pd.to_datetime(raw_spot_check_input_df["Date of Inventory"].astype(str).str.strip(), format='%m/%d/%Y')
     raw_purch_df["Date of Purchase"]= pd.to_datetime(raw_purch_df["Date of Purchase"].astype(str).str.strip(), format='%m/%d/%Y')
     raw_prod_df["Date of Production"]= pd.to_datetime(raw_prod_df["Date of Production"].astype(str).str.strip(), format='%m/%d/%Y')
     raw_cannibal_input_df["Date of Cannibalization"]= pd.to_datetime(raw_cannibal_input_df["Date of Cannibalization"].astype(str).str.strip(), format='%m/%d/%Y')
@@ -76,19 +83,23 @@ def find_unprocessed_data(args) -> list[pd.Timestamp, pd.Timestamp, dict]:
     purchase_ledger_df["Date of Purchase"]= pd.to_datetime(purchase_ledger_df["Date of Purchase"].astype(str).str.strip(), format='ISO8601')
     expanded_production_df["Date of Production"]= pd.to_datetime(expanded_production_df["Date of Production"].astype(str).str.strip(), format='ISO8601')
     cannibal_ledger_output_df["Date of Cannibalization"]= pd.to_datetime(cannibal_ledger_output_df["Date of Cannibalization"].astype(str).str.strip(), format='ISO8601')
+    spot_check_output_df["Date of Inventory"]= pd.to_datetime(spot_check_output_df["Date of Inventory"].astype(str).str.strip(), format='ISO8601')
 
     #Step 1.2 Create dataframes of activity dates that exist in raw data but not in output data  | pulling the dataset direct from dates that are missing means i no longer have to guess about what dates are needed to be added
     #Step 1.2a Pull unique dates of Inventory History that have Hand Count Inventory Activities already processed
     processed_hand_count_inventory_dates = inv_history_df[inv_history_df["Inventory Activity"]=="Hand Count"]["Date of Inventory"].unique()
+    processed_spot_check_dates = spot_check_output_df[spot_check_output_df["Inventory Activity"]=="Spot Inventory"]["Date of Inventory"].unique()
 
-    missing_inventories_df = raw_inv_df[~raw_inv_df["Date of Inventory"].isin(processed_hand_count_inventory_dates)]
+    #   missing_inventories_df = raw_inv_df[~raw_inv_df["Date of Inventory"].isin(processed_hand_count_inventory_dates)]
+    missing_spot_checks_df = raw_spot_check_input_df[~raw_spot_check_input_df["Date of Inventory"].isin(processed_spot_check_dates)]
     missing_purchases_df = raw_purch_df[~raw_purch_df["Date of Purchase"].isin(purchase_ledger_df["Date of Purchase"])]
     missing_sales_df = raw_sales_df[~raw_sales_df["Date of Sales"].isin(events_sales_df["Date of Sales"])]
     missing_production_df = raw_prod_df[~raw_prod_df["Date of Production"].isin(expanded_production_df["Date of Production"])]
     missing_cannibalism_df = raw_cannibal_input_df[~raw_cannibal_input_df["Date of Cannibalization"].isin(cannibal_ledger_output_df["Date of Cannibalization"])]
 
     loaded_dict = {
-        "Inventory": missing_inventories_df,
+        #   "Inventory": missing_inventories_df,
+        "Spot Check": missing_spot_checks_df,
         "Purchase": missing_purchases_df,
         "Production": missing_production_df,
         "Cannibalization": missing_cannibalism_df,
@@ -130,14 +141,16 @@ def find_unprocessed_data(args) -> list[pd.Timestamp, pd.Timestamp, dict]:
     def saving_files(args, activity_to_load_df: pd.DataFrame ,backdated_data :bool, activity_dict : dict, prepped_prod_df: pd.DataFrame, updated_purchase_lots_dict: dict, production_lots_append: pd.DataFrame, updated_prod_lots_dict: dict, cannibal_output: pd.DataFrame, prepped_sales_df: pd.DataFrame, date, activity):
       
         if not activity_to_load_df.empty:
-            populate_inventory_history(args, activity_to_load_df, backdated_data)                                                   # This is no longer robust enough for complex work, as cannibalizism has unqiue + production activity; need to update
+            populate_inventory_history(args, activity_to_load_df, backdated_data)                                                   # This is no longer robust enough for complex work, as cannibalizism has unqiue + production activity; need to update (but it's working 95% now?? See dev notes for details)
 
         if not all(df.empty for df in loaded_dict.values()):
+            if activity == "Spot Check":
+                activity_dict["Spot Check"] = activity_to_load_df
             append_ledgers(args, activity, activity_dict, prepped_prod_df, updated_purchase_lots_dict, production_lots_append, updated_prod_lots_dict, cannibal_output, prepped_sales_df)
             image_run(args, date, activity)
 
         vars_to_clean = [
-            'activity_to_load_df', 'updated_purchase_lots_dict', 'prepped_prod_df', 'changed_prod_df', 'production_lots_append', 'updated_prod_lots_dict', 'prepped_sales_df'                #   Need to determine cannibalism output variable and put back in here!
+            'activity_to_load_df', 'updated_purchase_lots_dict', 'prepped_prod_df', 'changed_prod_df', 'production_lots_append', 'updated_prod_lots_dict', 'prepped_sales_df', 'cannibal_output'                
         ]
         for var_name in vars_to_clean:
             if var_name in locals():
@@ -150,7 +163,14 @@ def find_unprocessed_data(args) -> list[pd.Timestamp, pd.Timestamp, dict]:
 
 
     current_inv_date = pd.to_datetime(current_inv_df["Date of Inventory"]).max()
-    priority_order = ["Inventory", "Purchase", "Production","Cannibalization", "Sales"]
+    priority_order = [
+        #   "Inventory",
+        "Spot Check",
+        "Purchase",
+        "Production",
+        "Cannibalization",
+        "Sales"
+        ]
 
     #build a logic set that makes sure the incoming data is in chronolical to prior runs
     chronological_data = False
@@ -310,7 +330,7 @@ def find_unprocessed_data(args) -> list[pd.Timestamp, pd.Timestamp, dict]:
 
         
 # Pull dataframes of all relevant data, convert into single table to analyze
-def merge_raw_data_for_processing(args, loaded_dict: dict[str:pd.DataFrame]) -> tuple(pd.DataFrame, dict, pd.DataFrame, pd.DataFrame, dict, pd.DataFrame):
+def merge_raw_data_for_processing(args, loaded_dict: dict[str:pd.DataFrame]) -> tuple[pd.DataFrame, dict, pd.DataFrame, pd.DataFrame, dict, pd.DataFrame]:
 
     bill_of_mats = args.bill_of_mats
     expanded_prod_ledger_path = args.expanded_production
@@ -335,14 +355,21 @@ def merge_raw_data_for_processing(args, loaded_dict: dict[str:pd.DataFrame]) -> 
 
     
     # Step 2.2a: transform Inventory Data
-        if activity == "Inventory":
-            prepped = transform_inv(raw_df)
-            prepped["Activity"] = "Inventory"
+        # if activity == "Inventory":
+        #     prepped = transform_inv(raw_df)                                                     #   Only Needed for Full Inventories (pivoted data)
+        #     prepped["Activity"] = " Full Inventory"
+        #     prepped = prepped.rename(columns={"Qty in Stock":"Qty","Date of Inventory":"Date"})
+        #     print(f"{len(prepped)} rows of Hand Count Inventory Data prepared for load.")
+        #     # print(prepped)
+
+    # Step 2.2b: transform Spot Checks
+        if activity == "Spot Check":
+            prepped, updated_purchase_lots_dict, updated_prod_lots_dict = calc_inventory(args, raw_df)
+            prepped["Activity"] = "Spot Inventory"
             prepped = prepped.rename(columns={"Qty in Stock":"Qty","Date of Inventory":"Date"})
             print(f"{len(prepped)} rows of Hand Count Inventory Data prepared for load.")
-            # print(prepped)
 
-    # Step 2.2b: transform Purchase Data
+    # Step 2.2c: transform Purchase Data
         elif activity == "Purchase":
             prepped = transform_purchase(raw_df)
             prepped["Activity"] = "Purchase"
@@ -350,7 +377,7 @@ def merge_raw_data_for_processing(args, loaded_dict: dict[str:pd.DataFrame]) -> 
             print(f"{len(prepped)} rows of {activity} Data prepared for load.")
             # print(prepped)
 
-    # Step 2.2c: transform Production Data
+    # Step 2.2d: transform Production Data
         elif activity == "Production":
             purch_ledger_df = pd.read_csv(purch_ledger_path)
             compressed_prod = transform_production(raw_df)
@@ -364,7 +391,7 @@ def merge_raw_data_for_processing(args, loaded_dict: dict[str:pd.DataFrame]) -> 
             print(f"{len(prepped)} rows of {activity} Data prepared for load:")
             # print(prepped_prod_df)
 
-    # Step 2.2d: transform Cannibalism Data
+    # Step 2.2e: transform Cannibalism Data
         elif activity == "Cannibalization":
             cannibal_output, prepped, updated_purchase_lots_dict, production_lots_append, updated_prod_lots_dict = calc_cannibalism(args,raw_df)
             prepped["Activity"] = "Cannibalization"
@@ -373,7 +400,7 @@ def merge_raw_data_for_processing(args, loaded_dict: dict[str:pd.DataFrame]) -> 
             print(f"{len(prepped)} rows of {activity} Data prepared for load:")
 
 
-    # Step 2.2a: transform Sales Data
+    # Step 2.2f: transform Sales Data
         elif activity == "Sales":
             purch_ledger_df = pd.read_csv(purch_ledger_path)
             prepped= transform_raw_sales(raw_df, master_table_df)
@@ -421,7 +448,7 @@ def populate_inventory_history(args, activity_ledger: pd.DataFrame, backdated_da
     stock_levels_path = args.stock_levels
     stock_exceptions_path = args.stock_exceptions
 
-    activity_order = ["Inventory","Purchase","Production", "Cannibalization","Sales"]
+    activity_order = ["Inventory","Spot Check", "Purchase","Production", "Cannibalization","Sales"]
 
     #Create a List of Dates to Parse over from the full activity log
     all_dates = unique_dates("Processing",activity_ledger)
@@ -467,12 +494,19 @@ def populate_inventory_history(args, activity_ledger: pd.DataFrame, backdated_da
             activity_df["Inventory Activity"] = activity
 
             # Based on each activity, execute relevant functions
-            if activity == "Inventory":
+            # if activity == "Inventory":
+            #     activity_df = activity_df.rename(columns={"Qty":"Qty in Stock","Date": "Date of Inventory"})
+            #     activity_df["Inventory Activity"] = "Full Inventory"
+            #     curr_inv = create_current_from_inv (activity_df)                                            #   Only Valid for full inventory
+            #     current_inventory = current_inv_enrichment(curr_inv, master_table_path)
+
+            #     append_to_inv(inv_history_path,current_inventory)
+
+            if activity == "Spot Check":
                 activity_df = activity_df.rename(columns={"Qty":"Qty in Stock","Date": "Date of Inventory"})
-                activity_df["Inventory Activity"] = "Hand Count"
-                curr_inv = create_current_from_inv (activity_df)
-                current_inventory = current_inv_enrichment(curr_inv, master_table_path)
+                current_inventory = activity_df.copy()
                 append_to_inv(inv_history_path,current_inventory)
+
             elif activity == "Purchase":
                 activity_df = activity_df.rename(columns={"Qty":"Quantity Bought","Date": "Date of Purchase"})
 
@@ -552,7 +586,6 @@ def append_ledgers(args, activity, activity_dict, prepped_prod_df: pd.DataFrame,
             # finally, we update purchase lots with an over write, if needed
             if updated_purchase_lots_dict:
                 change_lot_status(args,"Purchase", updated_purchase_lots_dict)
-        
 
     if activity == "Purchase":
         raw_purch_to_append = activity_dict
@@ -599,12 +632,6 @@ def append_ledgers(args, activity, activity_dict, prepped_prod_df: pd.DataFrame,
     # When/how to update?
     bill_of_mats_df = pd.read_csv(bill_of_mats)
     master_table_df = pd.read_csv(master_table_path)
-
-
-
-
-
-
 
 def image_run(args,date: str,activity: str):
     expanded_prod_ledger_path = args.expanded_production 

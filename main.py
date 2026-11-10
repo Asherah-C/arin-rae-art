@@ -14,7 +14,9 @@ production_ledger_path = "Inventory - FACT - Production Ledger.csv"
 bill_of_mats = "Inventory - DIM - Production Table.csv"
 raw_sales_path = "Inventory - FACT - Historical Sales.csv"
 cannibal_input_path = "Inventory - FACT - Cannibalism.csv"
+spot_check_input = "Inventory - FACT - Spot Inventories.csv"
 
+spot_check_output = "FACT - Spot Inventories.csv"
 cannibal_ledger_output = "FACT - Cannibalism Ledger.csv"
 expanded_prod_ledger_path = "FACT - Production Ledger.csv"  
 inv_history_path = "FACT - Inventory History.csv"
@@ -37,8 +39,9 @@ image_dir = "Imaged Data"
 #    master_table_output = args.master_table_output
 #    production_lots_path = args.prod_lots_output
 #    cannibal_input_path = args.cannibal_input
+#    spot_check_input = args.spot_check_input
 
-
+#    spot_check_output = args.spot_check_output
 #    master_table_path = args.master_item
 #    stock_levels_path = args.stock_levels
 #    stock_exceptions_path = args.stock_exceptions
@@ -204,6 +207,20 @@ def main():
         default = cannibal_ledger_output,
         metavar = "FILE",
         help = "File path for output Cannibalism CSV file"
+    )
+    parser.add_argument(
+        "--spot-check-input", 
+        type=str,
+        default = spot_check_input,
+        metavar = "FILE",
+        help = "File path for input spot inventories CSV file"
+    )
+    parser.add_argument(
+        "--spot-check-output", 
+        type=str,
+        default = spot_check_output,
+        metavar = "FILE",
+        help = "File path for input spot inventories CSV file"
     )
 
     args = parser.parse_args()

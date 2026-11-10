@@ -1,6 +1,5 @@
 import pandas as pd
 import duckdb
-#from transforms import backdating_purchases
 
 def prod_table_ref(path:str) -> pd.DataFrame:
     prod_table_df = pd.read_csv(path)
@@ -721,3 +720,299 @@ def calc_cannibalism(args, cannibal_df: pd.DataFrame) -> tuple(pd.DataFrame, pd.
     cannibal_prod_log["Purchase_ID"] = pd.to_numeric(cannibal_prod_log["Purchase_ID"].replace(["","nan", "NaN", "<NA>"],pd.NA), errors= "coerce").astype("Int64")
 
     return cannibal_output_df, cannibal_prod_log, changed_purchase_lots_dict, prod_lots_append, cannibalized_prod_lots_dict
+
+def calc_inventory(args,inventory_data_df) -> tuple[pd.DataFrame, dict, dict]:
+    #   Input Data shape has at least Item, Qty columns
+    #   Step 1: Load args
+    current_inv_path = args.current_inv
+
+    #   Step 2: Create Dictioary of items and the counts to minimize memory load against the dataframe
+    if isinstance(inventory_data_df, pd.DataFrame) and not inventory_data_df.empty:
+        inventory_dict = {}
+    else:
+        print("Inventory Activity Empty. Skipping...")
+        return
+
+    inventory_data_df = inventory_data_df.sort_values("Item",ascending=True)
+    for _, row in inventory_data_df.iterrows():
+        if not row["Item"] in inventory_dict.keys():
+            inventory_dict[row["Item"]] = row["Qty"]
+
+    #   Step 3: Create a limited dataframe from current inventory
+    current_inv_df = pd.read_csv(current_inv_path)
+    items_to_compare_counts_df = current_inv_df[current_inv_df["Item"].isin(inventory_dict.keys())]         #   Want to keep this copy clean, so we automatically have access to all the relevant lot #s
+    current_inv_aggregated_counts_df = items_to_compare_counts_df.copy()
+    current_inv_aggregated_counts_df = current_inv_aggregated_counts_df.groupby("Item", as_index=False).agg({"Qty in Stock": "sum"})         #   Creates a single sum line for each item
+    
+    #   Step 4: Create a Dictionary map of changes we see
+    shrinkage_dict = {}
+    surplus_dict = {}
+    correct_list = []
+    for _,row in current_inv_aggregated_counts_df.iterrows():
+        if not row["Item"] in inventory_dict.keys():
+            print("Error conducting Inventory: Exiting....")
+            raise ValueError
+
+        if not (row["Item"] in shrinkage_dict.keys() or row["Item"] in surplus_dict.keys()):
+            if inventory_dict[row["Item"]] == row["Qty in Stock"]:       #   Test for Correct, if correct we skip it!
+                correct_list.append(row["Item"])
+            
+            elif inventory_dict[row["Item"]] < row["Qty in Stock"]:      
+                shrinkage_dict[row["Item"]] = row["Qty in Stock"] - inventory_dict[row["Item"]]
+            
+            elif inventory_dict[row["Item"]] > row["Qty in Stock"]:      
+                surplus_dict[row["Item"]] = inventory_dict[row["Item"]] - row["Qty in Stock"]
+
+    #   Step 5: Test for inventory accuracy on how to proceed:
+    edited_counts_df = pd.DataFrame()
+    prod_inv_df = pd.DataFrame()
+    purch_inv_df = pd.DataFrame()
+    updated_purch_lots = {}
+    updated_prod_lots = {}
+    if not shrinkage_dict and not surplus_dict:                                 #   If both are empty, all counted items are correct. Nothing to do here
+        return edited_counts_df, updated_purch_lots, updated_prod_lots
+
+    else:                                                                       # Set up for deep dive, first minimize to only incorrect counts, then, set up for lot comparisons
+        items_to_compare_counts_df = items_to_compare_counts_df[~items_to_compare_counts_df["Item"].isin(correct_list)]
+        items_to_compare_counts_df["Purchase_ID"] = pd.to_numeric(items_to_compare_counts_df["Purchase_ID"].replace(["","nan", "NaN", "<NA>"],pd.NA), errors= "coerce").astype("Int64")
+        items_to_compare_counts_df["Batch_ID"] = pd.to_numeric(items_to_compare_counts_df["Batch_ID"].replace(["","nan", "NaN", "<NA>"],pd.NA), errors= "coerce").astype("Int64")
+        prod_items_with_errors_df = items_to_compare_counts_df[items_to_compare_counts_df["Batch_ID"] != pd.NA]
+        purch_items_with_errors_df = items_to_compare_counts_df[items_to_compare_counts_df["Purchase_ID"] != pd.NA]
+
+        def prod_goods_inv(args, finished_df: pd.DataFrame, shrinkage_dict: dict, surplus_dict: dict) -> tuple[pd.DataFrame, dict]:      #   It might be better to return the lists instead of the dataframe
+            production_lots_path = args.prod_lots_output
+            prod_lots_df = pd.read_csv(production_lots_path)
+            shrinkage_df = pd.DataFrame()
+            surplus_df = pd.DataFrame()
+            changed_prod_lots = {}
+            #   For produced items, each batch_ID qty = 1;
+            #   For shrinkage, we take from the oldest lot and exhaust it; because obsevred inventory was less than calculated, no special check needed here; worst case is that we exhaust all active lots
+            if shrinkage_dict:
+                shrinkage_df = finished_df[finished_df["Item"].isin(shrinkage_dict.keys())]
+                shrinkage_df = shrinkage_df[shrinkage_df["Qty in Stock"] >= 1]
+                shrinkage_df = shrinkage_df.sort_values(by="Batch_ID", ascending=True)
+
+                item_lots = {}
+                for _,row in shrinkage_df.iterrows():
+                    if not row["Item"] in item_lots.keys():
+                        item_lots[row["Item"]] = []
+                    item_lots[row["Item"]].append(row["Batch_ID"])
+                
+                lots_to_exhaust_list = []
+
+                for item, qty in shrinkage_dict.items():                        #    Builds a list of what items we are exhuasting for multiple purposes
+                    for i in range (qty):
+                        lots_to_exhaust_list.append(item_lots[item][i])
+
+                for batch_id in lots_to_exhaust_list:
+                    changed_prod_lots[batch_id]["Status"] = "Exhausted"
+                
+                shrinkage_df.loc[shrinkage_df["Batch_ID"].isin(lots_to_exhaust_list), "Qty in Stock"] = 0
+                shrinkage_df.loc[shrinkage_df["Batch_ID"].isin(lots_to_exhaust_list), "Activity"] = "Shrinkage"
+
+            #   For surplus, we take the newest exhausted and activate it
+            if surplus_dict:
+                surplus_df = finished_df[finished_df["Item"].isin(surplus_dict.keys())]
+                surplus_df = surplus_df[surplus_df["Qty in Stock"] == 0]
+                surplus_df = surplus_df.sort_values(by="Batch_ID", ascending=False)
+
+                item_lots = {}
+                for _,row in surplus_df.iterrows():
+                    if not row["Item"] in item_lots.keys():
+                        item_lots[row["Item"]] =[]
+                    item_lots[row["Item"]].append(row["Batch_ID"])
+
+                lots_to_activate_list = []
+
+                for item, qty in surplus_dict.items():
+                    if qty > len(item_lots[item]):                      #   A unique case here could occur where the observed qty represents more than ever made, as obsevred by have a greater difference than total lots available.
+                        print(f"ERROR: Inventory miscount on item.")
+                        print(f" Item with error: {item}")
+                        print("Error Type: Counted inventory exceeds recorded production amounts.")
+                        print(f"Recommendation: 1) Verify count of {item}, 2) verify production on {item}.")
+                        print("Exiting...")
+                        raise ValueError
+                    for i in range (qty):
+                        lots_to_activate_list.append(item_lots[item][i])
+
+                for batch_id in lots_to_exhaust_list:
+                    changed_prod_lots[batch_id]["Status"] = "Active"
+
+                surplus_df.loc[surplus_df["Batch_ID"].isin(lots_to_activate_list), "Qty in Stock"] = 1
+                surplus_df.loc[surplus_df["Batch_ID"].isin(lots_to_activate_list), "Activity"] = "Corrected"
+                
+            corrected_inv_df = pd.concat([shrinkage_df,surplus_df])
+            return  corrected_inv_df, prod_lots_df
+
+        def purch_goods_inv(args, component_df: pd.DataFrame, shrinkage_dict: dict, surplus_dict: dict) -> tuple[pd.DataFrame, dict]:
+            #   The core logic for purchased goods is the same for produced goods
+            #   What varies here is that our adjusted Qty is not set to 1, like production
+            #   Both steps will have to have additional step of looking at active quantities per lot and possible original quantities per lot
+            #   Shrinkage will operate almost the same, since we're taking away from the current stock and it has the same worst case; we will have less purchase_IDs per qty to adjust down
+            #   Surplus will need to look at current Count AND Max Qty (originally how many purchased) in order to increment correctly
+            purch_ledger_path = args.purchases_output
+            purch_lots_df = pd.read_csv(purch_ledger_path)
+            shrinkage_df = pd.DataFrame()
+            surplus_df = pd.DataFrame()
+            changed_purch_lots = {}
+            prod_inv_dict = {}
+            purch_inv_dict = {}
+
+            if shrinkage_dict:
+                shrinkage_df = component_df[component_df["Item"].isin(shrinkage_dict.keys())]
+                shrinkage_df = shrinkage_df[shrinkage_df["Qty in Stock"] >= 1]
+                shrinkage_df = shrinkage_df.sort_values(by="Purchase_ID", ascending=True)
+                
+                item_lots = {}
+                for _,row in shrinkage_df.iterrows():
+                    item = row["Item"]
+                    purch_id = row["Purchase_ID"]
+                    if not item in item_lots.keys():
+                        item_lots[item] = {}
+                    if not purch_id in item_lots[item].keys():
+                        item_lots[item][purch_id] = {}
+                    
+                    item_lots[item][purch_id]["Qty in Stock"] = row["Qty in Stock"]
+                    matched_purch_qty = purch_lots_df.loc[purch_lots_df["Purchase_ID"] == purch_id, "Quantity Bought"]
+
+                    if not matched_purch_qty.empty:
+                        item_lots[item][purch_id]["Qty Bought"] = matched_purch_qty.values[0]
+                    else:
+                        item_lots[item][purch_id]["Qty Bought"] = None
+                
+                lots_to_exhaust_list = []
+                for item, qty in shrinkage_dict.items():                        #   Builds a list of what items we are exhuasting for multiple purposes
+                    qty_to_depricate = qty                                      #   Starting Qty
+                    
+                    for purchase_id, inner_dict in item_lots.get(item,{}).items():
+                        if qty_to_depricate <= 0:
+                            break
+                        
+                        if inner_dict["Qty in Stock"] > qty_to_depricate:   #   When the oldest lot can cover the shrinkage, we simply adjust down
+                            shrinkage_df.loc[shrinkage_df["Purchase_ID"] == purchase_id, "Qty in Stock"] = inner_dict["Qty in Stock"] - qty_to_depricate
+                            shrinkage_df.loc[shrinkage_df["Purchase_ID"] == purchase_id, "Activity"] = "Shrinkage"
+                            break
+                        else:                                               #   Otherwise, we have to exhaust the lot and continue
+                            qty_to_depricate = qty_to_depricate - inner_dict["Qty in Stock"]
+                            lots_to_exhaust_list.append(purchase_id)
+                            shrinkage_df.loc[shrinkage_df["Purchase_ID"] == purchase_id, "Qty in Stock"] = 0
+                            shrinkage_df.loc[shrinkage_df["Purchase_ID"] == purchase_id, "Activity"] = "Shrinkage"
+
+                for purchase_id in lots_to_exhaust_list:
+                    changed_purch_lots[purchase_id]["Status"] = "Exhausted"
+                                 
+            if surplus_dict:
+                surplus_df = component_df[component_df["Item"].isin(surplus_dict.keys())]                       
+                surplus_df = surplus_df.sort_values(by="Purchase_ID", ascending=True)
+                
+                item_lots = {}
+                for _,row in surplus_df.iterrows():
+                    item = row["Item"]
+                    purch_id = row["Purchase_ID"]
+                    if not item in item_lots.keys():
+                        item_lots[item] = {}
+                    if not purch_id in item_lots[item].keys():
+                        item_lots[item][purch_id] = {}
+                    
+                    item_lots[item][purch_id]["Qty in Stock"] = row["Qty in Stock"]
+                    matched_purch_qty = purch_lots_df.loc[purch_lots_df["Purchase_ID"] == purch_id, "Quantity Bought"]
+
+                    if not matched_purch_qty.empty:
+                        item_lots[item][purch_id]["Qty Bought"] = matched_purch_qty.values[0]
+                    else:
+                        item_lots[item][purch_id]["Qty Bought"] = None
+
+                item_bucket_size = {}
+                filled_purch_ids_list = []
+                for purchase_id, inner_dict in item_lots[item].items():
+                    if inner_dict["Qty in Stock"] == inner_dict ["Qty Bought"]:             #   If this lot is already full, it is ineligible for incrementation and is already active; so we remove it from the available roster
+                        filled_purch_ids_list.append(purchase_id)
+                        item_lots[item].pop(purchase_id,None)
+                    else:
+                        if not item in item_bucket_size.keys():
+                            item_bucket_size[item] = 0
+                        item_bucket_size[item] += (inner_dict["Qty Bought"] - inner_dict["Qty in Stock"])
+
+                lots_to_activate_list = []
+                lots_to_increment = {}
+                for item, qty in surplus_dict.items():                                                   # Sanity Checks to make sure we have constrained the numbers to reality; we have to make sure we have the upper limit of available space
+                    if not item in item_bucket_size:
+                        print(f"ERROR: Inventory miscount.")
+                        print(f"Item :{item}")
+                        print(f"Error Type: Surplus incongruency.")
+                        print(f"Description: The item's count is in excess of the quantities purchased.")
+                        print(f"Suggestions: 1) recount item; 2) review recorded purchases of item.")
+                        raise ValueError
+                    elif qty > item_bucket_size[item]:
+                        print(f"ERROR: Inventory miscount.")
+                        print(f"Item :{item}")
+                        print(f"Error Type: Excessive surplus.")
+                        print(f"Description: The item's count is in excess of the sum of 'available space', based on purchases and production.")
+                        print(f"Suggestions: 1) recount item; 2) review recorded purchases of item, 3) review all production that uses said item.")
+                        raise ValueError
+                    else:
+                        qty_to_increment = qty
+                        
+                        for purchase_id, inner_dict in item_lots.get(item,{}).items():
+                            if qty_to_increment <= 0:
+                                break
+                            if inner_dict["Qty in Stock"] == 0:
+                                lots_to_activate_list.append(purchase_id)
+                            bucket = inner_dict["Qty Bought"] - inner_dict["Qty in Stock"]
+                            if bucket > qty_to_increment:
+                                lots_to_increment[purchase_id] = qty_to_increment
+                                break
+                            else:
+                                qty_to_increment = qty_to_increment - bucket
+                                lots_to_increment[purchase_id] = bucket
+
+                surplus_df = surplus_df[~surplus_df["Purchase_ID"].isin(filled_purch_ids_list)]
+                for purchase_id, qty in lots_to_increment.items():
+                    surplus_df.loc[surplus_df["Purchase_ID"] == purchase_id,"Qty in Stock"] += qty
+                    surplus_df.loc[surplus_df["Purchase_ID"] == purchase_id,"Activity"] = "Corrected"
+                
+                for purchase_id in lots_to_activate_list:
+                    changed_purch_lots[purchase_id]["Status"] = "Active"
+                
+            corrected_inv_df = pd.concat([shrinkage_df, surplus_df])
+
+            return corrected_inv_df, changed_purch_lots
+        
+        if not prod_items_with_errors_df.empty:
+            prod_inv_df, updated_prod_lots = prod_goods_inv(args, prod_items_with_errors_df, shrinkage_dict, surplus_dict)
+            prod_inv_dict = prod_inv_df.set_index("Batch_ID")["Qty in Stock"].to_dict()
+        if not purch_items_with_errors_df.empty:
+            purch_inv_df, updated_purch_lots = purch_goods_inv(args, purch_items_with_errors_df, shrinkage_dict, surplus_dict)
+            purch_inv_dict = prod_inv_df.set_index("Purchase_ID")["Qty in Stock"].to_dict()
+        edited_counts_df = pd.concat([prod_inv_df,purch_inv_df])
+
+        # Guardrail: Check for 100% divergence across the inventory
+    if len(edited_counts_df) == len(current_inv_df) and len(current_inv_df) > 0:
+        print("\n" + "="*70)
+        print("WARNING: Complete inventory divergence detected.")
+        print("Every single row in the current inventory requires correction.")
+        print("Is this an initial hand count or a full inventory reset following a major incident?")
+        print("="*70)
+        
+        while True:
+            choice = input("Press Y to nuke the current counts and proceed, or N to abort [y/N]: ").strip().lower()
+            if choice in ["y", "yes"]:
+                print("Override accepted. Proceeding with full inventory reset...")
+                break
+            elif choice in ["n", "no", ""]:
+                print("Aborting inventory reconciliation. Exiting safely...")
+                raise ValueError("Operation aborted by user due to 100% inventory divergence.")
+            else:
+                print("Invalid response. Please enter 'Y' or 'N'.")
+
+    # Assemble a full current inventory here with dictionary mapping iterations to modify the lines. This prevents the need to call supplemental functions to enrich the inventory, since we're modifying the last current inventory and not adding any lines and minimizes Big O.
+    if prod_inv_dict:
+        for batch_id, qty in prod_inv_dict.items():
+            current_inv_df.loc[current_inv_df["Batch_ID"] == batch_id,"Qty in Stock"] = qty
+            current_inv_df.loc[current_inv_df["Batch_ID"] == batch_id,"Inventory Activity"] = "Spot Inventory"
+    if purch_inv_dict:
+        for purchase_id, qty in purch_inv_dict.items():
+            current_inv_df.loc[current_inv_df["Purchase_ID"] == purchase_id,"Qty in Stock"] = qty
+            current_inv_df.loc[current_inv_df["Purchase_ID"] == purchase_id,"Inventory Activity"] = "Spot Inventory"
+
+    return current_inv_df, updated_purch_lots, updated_prod_lots

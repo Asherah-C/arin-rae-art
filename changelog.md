@@ -221,3 +221,10 @@ No new main features. Back end prep for Purchase /Production logic for cost anal
 -               To Do - Add cannibalism to tests.py for peace of mind.
 -               To Do - Square & Etsy Sales Data
 -               To Do - Automation - Pull raw files directly
+
+#   2.1.1 Inventory Spot Check
+*   Feature Retired: Inventory Snapshots. In lieu of full inventory counts, inventory can now be done for as few or as many items as needed now. Snaps was retired to align with tthe COGS feature, turning on and off lots that have been touched.
+*   New feature: inventory spot checking:
+    - Inventory counts now are adjusted using FIFO principles.
+    - Counts can be deployed to target specific SKUs or done across the entire item list.
+    - New form and output sheet available in Google Sheets
